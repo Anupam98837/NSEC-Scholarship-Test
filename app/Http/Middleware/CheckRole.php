@@ -14,10 +14,13 @@ class CheckRole
 
     /**
      * Usage:
-     *   ->middleware('checkRole')                         // any authenticated user
-     *   ->middleware('checkRole:admin,super_admin')       // only admin or super admin
-     *   ->middleware('checkRole:examiner,admin')          // only examiner/admin
-     *   ->middleware('checkRole:student')                 // only students
+     *   ->middleware('checkRole')                                  // any authenticated user
+     *   ->middleware('checkRole:admin,super_admin')                // only admin or super admin
+     *   ->middleware('checkRole:examiner,admin')                   // only examiner/admin
+     *   ->middleware('checkRole:student')                          // only students
+     *   ->middleware('checkRole:author')                           // only authors
+     *   ->middleware('checkRole:college_administrator')            // only college administrators
+     *   ->middleware('checkRole:academic_counsellor')              // only academic counsellors
      */
     public function handle(Request $request, Closure $next, ...$roles): Response
     {
@@ -123,11 +126,14 @@ class CheckRole
     }
 
     /**
-     * Map short forms & synonyms → canonical tokens for Unzip Exam:
-     * Canonical set (internal tokens): superadmin, admin, examiner, student
+     * Map short forms & synonyms → canonical tokens for Unzip Exam.
      *
-     * DB values (from UserController normalizeRole): super_admin, admin, examiner, student
-     * but we strip underscores/hyphens before mapping.
+     * Canonical set (internal tokens):
+     *   superadmin, admin, examiner, student, author, collegeadministrator, academiccounsellor
+     *
+     * DB values can be like:
+     *   super_admin, admin, examiner, student, author, college_administrator, academic_counsellor
+     * We strip underscores/hyphens/spaces before mapping.
      */
     private function aliasToCanonical(string $norm): string
     {
@@ -157,12 +163,23 @@ class CheckRole
             'students'    => 'student',
             'learner'     => 'student',
             'candidate'   => 'student',
+
+            // author
+            'author' => 'author',
+'writer' => 'author',
+'aut' => 'author',
+
+'collegeadministrator' => 'college_administrator',
+'collegeadmin' => 'college_administrator',
+'collegeadministrator' => 'college_administrator',
+'cadm' => 'college_administrator',
+
+'academiccounsellor' => 'academic_counsellor',
+'academiccounselor'  => 'academic_counsellor',
+'acc' => 'academic_counsellor',
         ];
 
-        // If the incoming is already one of our canonical forms (with/without underscore),
-        // we normalized underscores/hyphens away earlier, so:
-        // super_admin / super-admin -> "superadmin"
-        // (the fallback below keeps already-canonical tokens as-is)
+        // If not mapped, keep as-is (already canonical after normalization)
         return $map[$norm] ?? $norm;
     }
 
@@ -171,11 +188,11 @@ class CheckRole
     {
         $set = [];
 
-        // from DB role (e.g., "super_admin" | "examiner" | "student")
+        // from DB role (e.g., "super_admin" | "examiner" | "student" | "college_administrator")
         $role = $this->normalize((string) ($user->role ?? ''));
         if ($role !== '') $set[] = $role;
 
-        // from DB short form (e.g., "SA","ADM","EXM","STD")
+        // from DB short form (e.g., "SA","ADM","EXM","STD","AUTH","CADM","ACC")
         $short = $this->normalize((string) ($user->role_short_form ?? ''));
         if ($short !== '') $set[] = $this->aliasToCanonical($short);
 

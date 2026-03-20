@@ -17,6 +17,18 @@
     <div id="dashStudent" style="display:none">
       @include('modules.common.studentDashboard')
     </div>
+
+    <div id="dashAuthor" style="display:none">
+      @include('modules.common.authorDashboard')
+    </div>
+
+    <div id="dashCollegeAdmin" style="display:none">
+      @include('modules.common.collegeAdminDashboard')
+    </div>
+
+    <div id="dashAcademicCounsellor" style="display:none">
+      @include('modules.common.academicCounsellorDashboard')
+    </div>
   </div>
 @endsection
 
@@ -37,21 +49,30 @@
     await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
   }
 
-  const dashAdmin    = document.getElementById('dashAdmin');
-  const dashExaminer = document.getElementById('dashExaminer');
-  const dashStudent  = document.getElementById('dashStudent');
+  const dashAdmin              = document.getElementById('dashAdmin');
+  const dashExaminer           = document.getElementById('dashExaminer');
+  const dashStudent            = document.getElementById('dashStudent');
+  const dashAuthor             = document.getElementById('dashAuthor');
+  const dashCollegeAdmin       = document.getElementById('dashCollegeAdmin');
+  const dashAcademicCounsellor = document.getElementById('dashAcademicCounsellor');
 
   // Check if panels exist
-  if (!dashAdmin || !dashExaminer || !dashStudent) {
+  if (!dashAdmin || !dashExaminer || !dashStudent ||
+      !dashAuthor || !dashCollegeAdmin || !dashAcademicCounsellor) {
     console.error('[DASH] Missing dashboard panels');
     return;
   }
 
   // Helper: show only one panel
   const showPanel = (panel) => {
-    dashAdmin.style.display = 'none';
-    dashExaminer.style.display = 'none';
-    dashStudent.style.display = 'none';
+    [
+      dashAdmin,
+      dashExaminer,
+      dashStudent,
+      dashAuthor,
+      dashCollegeAdmin,
+      dashAcademicCounsellor,
+    ].forEach(p => p.style.display = 'none');
     panel.style.display = 'block';
   };
 
@@ -64,12 +85,28 @@
     } catch (e) {}
   };
 
-  // Normalize role (important fix ✅)
+  // Normalize role
   const normalizeRole = (role) => {
-    const r = String(role || '').trim().toLowerCase();
+    const r = String(role || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
 
-    // ✅ super_admin should behave like admin
-    if (r === 'super_admin' || r === 'superadmin' || r === 'super-admin') return 'admin';
+    // super_admin behaves like admin
+    if (r === 'super_admin' || r === 'superadmin') return 'admin';
+
+    // college_administrator variants
+    if (r === 'college_administrator' || r === 'collegeadministrator' ||
+        r === 'college_admin'         || r === 'cadm') {
+      return 'college_administrator';
+    }
+
+    // academic_counsellor variants (both spellings)
+    if (r === 'academic_counsellor'  || r === 'academic_counselor' ||
+        r === 'academiccounsellor'   || r === 'academiccounselor'  ||
+        r === 'acc') {
+      return 'academic_counsellor';
+    }
+
+    // author variants
+    if (r === 'author' || r === 'writer' || r === 'aut') return 'author';
 
     return r;
   };
@@ -125,9 +162,7 @@
   if (role === 'admin') {
     showPanel(dashAdmin);
     console.log('[DASH] Showing admin dashboard');
-
     if (typeof window.initializeAdminDashboard === 'function') {
-      console.log('[DASH] Initializing admin dashboard');
       window.initializeAdminDashboard();
     } else {
       console.error('[DASH] initializeAdminDashboard not found');
@@ -136,9 +171,7 @@
   } else if (role === 'examiner') {
     showPanel(dashExaminer);
     console.log('[DASH] Showing examiner dashboard');
-
     if (typeof window.initializeExaminerDashboard === 'function') {
-      console.log('[DASH] Initializing examiner dashboard');
       window.initializeExaminerDashboard();
     } else {
       console.error('[DASH] initializeExaminerDashboard not found');
@@ -147,20 +180,46 @@
   } else if (role === 'student') {
     showPanel(dashStudent);
     console.log('[DASH] Showing student dashboard');
-
     if (typeof window.initializeStudentDashboard === 'function') {
-      console.log('[DASH] Initializing student dashboard');
       window.initializeStudentDashboard();
     } else {
       console.error('[DASH] initializeStudentDashboard not found');
     }
 
+  } else if (role === 'author') {
+    showPanel(dashAuthor);
+    console.log('[DASH] Showing author dashboard');
+    if (typeof window.initializeAuthorDashboard === 'function') {
+      window.initializeAuthorDashboard();
+    } else {
+      console.error('[DASH] initializeAuthorDashboard not found');
+    }
+
+  } else if (role === 'college_administrator') {
+    showPanel(dashCollegeAdmin);
+    console.log('[DASH] Showing college administrator dashboard');
+    if (typeof window.initializeCollegeAdminDashboard === 'function') {
+      window.initializeCollegeAdminDashboard();
+    } else {
+      console.error('[DASH] initializeCollegeAdminDashboard not found');
+    }
+
+  } else if (role === 'academic_counsellor') {
+    showPanel(dashAcademicCounsellor);
+    console.log('[DASH] Showing academic counsellor dashboard');
+    if (typeof window.initializeAcademicCounsellorDashboard === 'function') {
+      window.initializeAcademicCounsellorDashboard();
+    } else {
+      console.error('[DASH] initializeAcademicCounsellorDashboard not found');
+    }
+
   } else {
+    console.warn('[DASH] Unknown role, redirecting:', role);
     window.location.replace('/');
     return;
   }
 
   console.log('[DASH] Dashboard initialized for role:', role);
 })();
-</script> 
+</script>
 @endpush

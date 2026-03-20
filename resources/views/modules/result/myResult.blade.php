@@ -123,16 +123,16 @@ html.theme-dark .table tbody tr{border-color:var(--line-soft)}
       <button type="button" class="sr-tab active" data-type="quizz">
         <i class="fa fa-clipboard-question"></i> Quizz
       </button>
-      <button type="button" class="sr-tab" data-type="door_game">
+      <button type="button" class="sr-tab d-none" data-type="door_game">
         <i class="fa fa-door-open"></i> Door
       </button>
-      <button type="button" class="sr-tab" data-type="bubble_game">
+      <button type="button" class="sr-tab d-none" data-type="bubble_game">
         <i class="fa fa-circle"></i> Bubble
       </button>
-      <button type="button" class="sr-tab" data-type="path_game">
+      <button type="button" class="sr-tab d-none" data-type="path_game">
         <i class="fa fa-route"></i> Path
       </button>
-      <button type="button" class="sr-tab" data-type="">
+      <button type="button" class="sr-tab d-none" data-type="">
         <i class="fa fa-layer-group"></i> All
       </button>
     </div>

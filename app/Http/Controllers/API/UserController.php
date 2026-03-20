@@ -21,7 +21,9 @@ class UserController extends Controller
     private const USER_TYPE = 'App\\Models\\User';
 
     /** Canonical roles for Unzip Exam */
-    private const ROLES = ['super_admin','admin','examiner','student'];
+    private const ROLES = ['super_admin','admin','examiner','student','author',
+    'college_administrator',
+    'academic_counsellor',];
 
     /** Short codes for roles */
     private const ROLE_SHORT = [
@@ -29,126 +31,280 @@ class UserController extends Controller
         'admin'       => 'ADM',
         'examiner'    => 'EXM',
         'student'     => 'STD',
+        'author'                => 'AUT',
+    'college_administrator' => 'CADM',
+    'academic_counsellor'   => 'ACC',
     ];
 
     /* =========================================================
      |                       AUTH
      |=========================================================*/
+/**
+ * Reusable activity logger
+ * Maps auth events to the current user_data_activity_log schema.
+ */
+private function logActivity(
+    string $activity,
+    string $title,
+    string $description,
+    ?int $performedBy = null,
+    ?string $performedByName = null,
+    $targetId = null,
+    ?string $targetType = 'user',
+    array $properties = [],
+    ?Request $request = null,
+    string $module = 'users'
+): void {
+    try {
+        // Your table has performed_by as NOT NULL, so keep a safe fallback.
+        $actorId = $performedBy ?: (is_numeric($targetId) ? (int) $targetId : 0);
+        $recordId = is_numeric($targetId) ? (int) $targetId : ($performedBy ?: null);
 
-    /**
-     * POST /api/auth/login
-     * Body: { email, password, remember?: bool }
-     * Returns: { access_token, token_type, expires_at?, user: {...} }
-     */
-    public function login(Request $request)
-    {
-        Log::info('[UnzipExam Auth Login] begin', ['ip' => $request->ip()]);
-
-        $validated = $request->validate([
-            'email'    => 'required|email',
-            'password' => 'required|string',
-            'remember' => 'sometimes|boolean',
+        $noteParts = array_filter([
+            trim($title),
+            trim($description),
+            $performedByName ? ('Actor: ' . $performedByName) : null,
         ]);
+        $logNote = implode(' — ', $noteParts);
 
-        $user = DB::table('users')
-            ->where('email', $validated['email'])
-            ->whereNull('deleted_at')
-            ->first();
+        $changedFields = !empty($properties) ? array_values(array_map('strval', array_keys($properties))) : null;
+        $newValues = !empty($properties) ? $properties : null;
 
-        if (!$user) {
-            Log::warning('[UnzipExam Auth Login] user not found', ['email' => $validated['email']]);
-            return response()->json(['status'=>'error','message'=>'Invalid credentials'], 401);
-        }
-
-        if (isset($user->status) && $user->status !== 'active') {
-            Log::warning('[UnzipExam Auth Login] inactive user', [
-                'user_id'=>$user->id,
-                'status'=>$user->status
-            ]);
-            return response()->json(['status'=>'error','message'=>'Account is not active'], 403);
-        }
-
-        if (!Hash::check($validated['password'], $user->password)) {
-            Log::warning('[UnzipExam Auth Login] password mismatch', ['user_id'=>$user->id]);
-            return response()->json(['status'=>'error','message'=>'Invalid credentials'], 401);
-        }
-
-        // Remember-me -> longer expiry. Otherwise, short TTL.
-        $remember  = (bool)($validated['remember'] ?? false);
-        $expiresAt = $remember ? now()->addDays(30) : now()->addHours(12);
-
-        $plainToken = $this->issueToken((int)$user->id, $expiresAt);
-
-        // Update last login markers
-        DB::table('users')->where('id', $user->id)->update([
-            'last_login_at' => now(),
-            'last_login_ip' => $request->ip(),
-            'updated_at'    => now(),
+        DB::table('user_data_activity_log')->insert([
+            'performed_by'      => $actorId,
+            'performed_by_role' => isset($properties['role']) && $properties['role'] !== null
+                ? (string) $properties['role']
+                : null,
+            'ip'                => $request?->ip(),
+            'user_agent'        => $request?->userAgent(),
+            'activity'          => $activity,
+            'module'            => $module,
+            'table_name'        => $targetType === 'user' ? 'users' : (string) ($targetType ?: 'users'),
+            'record_id'         => $recordId,
+            'changed_fields'    => $changedFields ? json_encode($changedFields, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null,
+            'old_values'        => null,
+            'new_values'        => $newValues ? json_encode($newValues, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null,
+            'log_note'          => $logNote ?: null,
+            'created_at'        => now(),
+            'updated_at'        => now(),
         ]);
-
-        $payloadUser = $this->publicUserPayload($user);
-
-        Log::info('[UnzipExam Auth Login] success', [
-            'user_id'=>$user->id,
-            'role'=>$payloadUser['role'] ?? null
-        ]);
-
-        return response()->json([
-            'status'       => 'success',
-            'message'      => 'Login successful',
-            'access_token' => $plainToken,
-            'token_type'   => 'Bearer',
-            'expires_at'   => $expiresAt->toIso8601String(),
-            'user'         => $payloadUser,
+    } catch (\Throwable $e) {
+        Log::error('[Activity Log] failed', [
+            'activity'     => $activity,
+            'performed_by' => $performedBy,
+            'target_id'    => $targetId,
+            'error'        => $e->getMessage(),
         ]);
     }
+}
+/**
+ * POST /api/auth/login
+ * Body: { login, password, remember?: bool }
+ * 'login' can be email or phone number
+ * Returns: { access_token, token_type, expires_at?, user: {...} }
+ */
+public function login(Request $request)
+{
+    Log::info('[UnzipExam Auth Login] begin', ['ip' => $request->ip()]);
 
-    /**
-     * POST /api/auth/student-register
-     * Body:
-     * {
-     *   "user_folder_id": 5,
-     *   "email": "student@gmail.com",
-     *   "phone_number": "9876543210",
-     *   "password": "Student@123",
-     *   "password_confirmation": "Student@123"
-     * }
-     *
-     * ✅ Group = Folder (user_folder_id)
-     * ✅ Registers STUDENT only
-     */
-    public function studentRegister(Request $request)
+    $validated = $request->validate([
+        'login'    => 'required|string',   // email or phone number
+        'password' => 'required|string',
+        'remember' => 'sometimes|boolean',
+    ]);
+
+    $loginInput = $validated['login'];
+
+    // Determine if input is email or phone number
+    $isEmail = filter_var($loginInput, FILTER_VALIDATE_EMAIL);
+
+    $user = DB::table('users')
+        ->when($isEmail, function ($query) use ($loginInput) {
+            $query->where('email', $loginInput);
+        }, function ($query) use ($loginInput) {
+            $query->where('phone_number', $loginInput);
+        })
+        ->whereNull('deleted_at')
+        ->first();
+
+    if (!$user) {
+        Log::warning('[UnzipExam Auth Login] user not found', ['login' => $loginInput]);
+
+        $this->logActivity(
+            activity: 'login_failed',
+            title: 'Login failed - user not found',
+            description: 'Login attempt failed because no user was found for the provided email or phone number.',
+            performedBy: 0,
+            performedByName: null,
+            targetId: null,
+            targetType: 'user',
+            properties: [
+                'login'  => $loginInput,
+                'reason' => 'user_not_found',
+            ],
+            request: $request,
+            module: 'users'
+        );
+
+        return response()->json(['status' => 'error', 'message' => 'Invalid credentials'], 401);
+    }
+
+    if (isset($user->status) && $user->status !== 'active') {
+        Log::warning('[UnzipExam Auth Login] inactive user', [
+            'user_id' => $user->id,
+            'status'  => $user->status
+        ]);
+
+        $this->logActivity(
+            activity: 'login_blocked',
+            title: 'Login blocked - inactive account',
+            description: 'Login attempt blocked because the account is not active.',
+            performedBy: (int) $user->id,
+            performedByName: $user->name ?? null,
+            targetId: $user->id,
+            targetType: 'user',
+            properties: [
+                'login'  => $loginInput,
+                'status' => $user->status,
+                'reason' => 'inactive_account',
+                'role'   => $user->role ?? null,
+            ],
+            request: $request,
+            module: 'users'
+        );
+
+        return response()->json(['status' => 'error', 'message' => 'Account is not active'], 403);
+    }
+
+    if (!Hash::check($validated['password'], $user->password)) {
+        Log::warning('[UnzipExam Auth Login] password mismatch', ['user_id' => $user->id]);
+
+        $this->logActivity(
+            activity: 'login_failed',
+            title: 'Login failed - password mismatch',
+            description: 'Login attempt failed because the password did not match.',
+            performedBy: (int) $user->id,
+            performedByName: $user->name ?? null,
+            targetId: $user->id,
+            targetType: 'user',
+            properties: [
+                'login'  => $loginInput,
+                'reason' => 'password_mismatch',
+                'role'   => $user->role ?? null,
+            ],
+            request: $request,
+            module: 'users'
+        );
+
+        return response()->json(['status' => 'error', 'message' => 'Invalid credentials'], 401);
+    }
+
+    $remember  = (bool) ($validated['remember'] ?? false);
+    $expiresAt = $remember ? now()->addDays(30) : now()->addHours(12);
+
+    $plainToken = $this->issueToken((int) $user->id, $expiresAt);
+
+    DB::table('users')->where('id', $user->id)->update([
+        'last_login_at' => now(),
+        'last_login_ip' => $request->ip(),
+        'updated_at'    => now(),
+    ]);
+
+    $payloadUser = $this->publicUserPayload($user);
+
+    $this->logActivity(
+        activity: 'login',
+        title: 'User login successful',
+        description: 'User logged in successfully.',
+        performedBy: (int) $user->id,
+        performedByName: $user->name ?? null,
+        targetId: $user->id,
+        targetType: 'user',
+        properties: [
+            'login'      => $loginInput,
+            'remember'   => $remember,
+            'expires_at' => $expiresAt->toIso8601String(),
+            'role'       => $payloadUser['role'] ?? ($user->role ?? null),
+        ],
+        request: $request,
+        module: 'users'
+    );
+
+    Log::info('[UnzipExam Auth Login] success', [
+        'user_id' => $user->id,
+        'role'    => $payloadUser['role'] ?? null
+    ]);
+
+    return response()->json([
+        'status'       => 'success',
+        'message'      => 'Login successful',
+        'access_token' => $plainToken,
+        'token_type'   => 'Bearer',
+        'expires_at'   => $expiresAt->toIso8601String(),
+        'user'         => $payloadUser,
+    ]);
+}
+/**
+ * POST /api/auth/student-register
+ * Body:
+ * {
+ *   "user_folder_id": 5,
+ *   "name": "Student Name",
+ *   "email": "student@gmail.com",
+ *   "phone_number": "9876543210",
+ *   "password": "Student@123",
+ *   "password_confirmation": "Student@123"
+ * }
+ *
+ * ✅ Group = Folder (user_folder_id)
+ * ✅ Registers STUDENT only
+ */
+public function studentRegister(Request $request)
 {
     Log::info('[Student Register] begin', ['ip' => $request->ip()]);
 
-    // ✅ Normalize folder id (in case FE sends null/undefined)
     if ($request->has('user_folder_id')) {
         $raw = $request->input('user_folder_id');
 
         if ($raw === '' || $raw === null || $raw === 'null' || $raw === 'undefined') {
             $request->merge(['user_folder_id' => null]);
         } else {
-            $request->merge(['user_folder_id' => (int)$raw]);
+            $request->merge(['user_folder_id' => (int) $raw]);
         }
     }
 
     $v = Validator::make($request->all(), [
-        'user_folder_id'        => [
+        'user_folder_id' => [
             'required',
             'integer',
             Rule::exists('user_folders', 'id')->whereNull('deleted_at'),
         ],
-
-        // ✅ ADDED: name comes from FE
-        'name'                 => 'required|string|max:255',
-
-        'email'                 => 'required|email|max:255',
-        'phone_number'          => 'required|string|max:32',
-        'password'              => 'required|string|min:8|confirmed',
-        // password_confirmation must be sent ✅
+        'name'         => 'required|string|max:255',
+        'email'        => 'required|email|max:255',
+        'phone_number' => 'required|string|max:32',
+        'password'     => 'required|string|min:8|confirmed',
     ]);
 
     if ($v->fails()) {
+        $this->logActivity(
+            activity: 'store_failed',
+            title: 'Student registration failed - validation error',
+            description: 'Student registration failed due to validation errors.',
+            performedBy: 0,
+            performedByName: null,
+            targetId: null,
+            targetType: 'user',
+            properties: [
+                'email'        => $request->input('email'),
+                'phone_number' => $request->input('phone_number'),
+                'errors'       => $v->errors()->toArray(),
+                'reason'       => 'validation_error',
+                'role'         => 'student',
+            ],
+            request: $request,
+            module: 'users'
+        );
+
         return response()->json([
             'status' => 'error',
             'errors' => $v->errors(),
@@ -157,8 +313,24 @@ class UserController extends Controller
 
     $data = $v->validated();
 
-    // ✅ Duplicate checks (ignore soft-deleted)
     if (DB::table('users')->where('email', $data['email'])->whereNull('deleted_at')->exists()) {
+        $this->logActivity(
+            activity: 'store_failed',
+            title: 'Student registration failed - duplicate email',
+            description: 'Student registration failed because the email already exists.',
+            performedBy: 0,
+            performedByName: null,
+            targetId: null,
+            targetType: 'user',
+            properties: [
+                'email'  => $data['email'],
+                'reason' => 'duplicate_email',
+                'role'   => 'student',
+            ],
+            request: $request,
+            module: 'users'
+        );
+
         return response()->json([
             'status'  => 'error',
             'message' => 'Email already exists',
@@ -166,25 +338,40 @@ class UserController extends Controller
     }
 
     if (DB::table('users')->where('phone_number', $data['phone_number'])->whereNull('deleted_at')->exists()) {
+        $this->logActivity(
+            activity: 'store_failed',
+            title: 'Student registration failed - duplicate phone number',
+            description: 'Student registration failed because the phone number already exists.',
+            performedBy: 0,
+            performedByName: null,
+            targetId: null,
+            targetType: 'user',
+            properties: [
+                'phone_number' => $data['phone_number'],
+                'reason'       => 'duplicate_phone_number',
+                'role'         => 'student',
+            ],
+            request: $request,
+            module: 'users'
+        );
+
         return response()->json([
             'status'  => 'error',
             'message' => 'Phone number already exists',
         ], 422);
     }
 
-    // ✅ UUID unique
-    do { $uuid = (string) Str::uuid(); }
-    while (DB::table('users')->where('uuid', $uuid)->exists());
+    do {
+        $uuid = (string) Str::uuid();
+    } while (DB::table('users')->where('uuid', $uuid)->exists());
 
-    // ✅ Name from request (trim + clean)
     $name = trim($data['name']);
 
-    // ✅ Unique slug
     $base = Str::slug($name ?: 'student');
-    do { $slug = $base . '-' . Str::lower(Str::random(24)); }
-    while (DB::table('users')->where('slug', $slug)->exists());
+    do {
+        $slug = $base . '-' . Str::lower(Str::random(24));
+    } while (DB::table('users')->where('slug', $slug)->exists());
 
-    // ✅ Force student role
     [$role, $roleShort] = $this->normalizeRole('student', null);
 
     $now = now();
@@ -192,14 +379,11 @@ class UserController extends Controller
     try {
         DB::table('users')->insert([
             'uuid'            => $uuid,
-            'name'            => $name, // ✅ name from FE
+            'name'            => $name,
             'email'           => $data['email'],
             'phone_number'    => $data['phone_number'],
             'password'        => Hash::make($data['password']),
-
-            // ✅ Group = folder
-            'user_folder_id'  => (int)$data['user_folder_id'],
-
+            'user_folder_id'  => (int) $data['user_folder_id'],
             'role'            => $role,
             'role_short_form' => $roleShort,
             'slug'            => $slug,
@@ -217,9 +401,47 @@ class UserController extends Controller
 
         $user = DB::table('users')->where('email', $data['email'])->first();
 
-        // ✅ Auto login after register
         $expiresAt  = now()->addDays(30);
-        $plainToken = $this->issueToken((int)$user->id, $expiresAt);
+        $plainToken = $this->issueToken((int) $user->id, $expiresAt);
+
+        $this->logActivity(
+            activity: 'store',
+            title: 'Student registration successful',
+            description: 'A new student account was registered successfully.',
+            performedBy: (int) $user->id,
+            performedByName: $user->name ?? null,
+            targetId: $user->id,
+            targetType: 'user',
+            properties: [
+                'name'           => $name,
+                'email'          => $data['email'],
+                'phone_number'   => $data['phone_number'],
+                'user_folder_id' => (int) $data['user_folder_id'],
+                'role'           => $role,
+                'expires_at'     => $expiresAt->toIso8601String(),
+            ],
+            request: $request,
+            module: 'users'
+        );
+
+        // Optional auto-login log after register
+        $this->logActivity(
+            activity: 'login',
+            title: 'User login successful after registration',
+            description: 'Student account auto-logged in after successful registration.',
+            performedBy: (int) $user->id,
+            performedByName: $user->name ?? null,
+            targetId: $user->id,
+            targetType: 'user',
+            properties: [
+                'email'      => $data['email'],
+                'expires_at' => $expiresAt->toIso8601String(),
+                'role'       => $role,
+                'source'     => 'student_register_auto_login',
+            ],
+            request: $request,
+            module: 'users'
+        );
 
         return response()->json([
             'status'       => 'success',
@@ -232,6 +454,26 @@ class UserController extends Controller
 
     } catch (\Throwable $e) {
         Log::error('[Student Register] failed', ['error' => $e->getMessage()]);
+
+        $this->logActivity(
+            activity: 'store_failed',
+            title: 'Student registration failed - server error',
+            description: 'Student registration failed due to an internal server error.',
+            performedBy: 0,
+            performedByName: null,
+            targetId: null,
+            targetType: 'user',
+            properties: [
+                'email'        => $data['email'] ?? null,
+                'phone_number' => $data['phone_number'] ?? null,
+                'reason'       => 'server_error',
+                'error'        => $e->getMessage(),
+                'role'         => 'student',
+            ],
+            request: $request,
+            module: 'users'
+        );
+
         return response()->json([
             'status'  => 'error',
             'message' => 'Student registration failed',
@@ -239,35 +481,101 @@ class UserController extends Controller
     }
 }
 
+/**
+ * POST /api/auth/logout
+ * Header: Authorization: Bearer <token>
+ */
+public function logout(Request $request)
+{
+    Log::info('[UnzipExam Auth Logout] begin', ['ip' => $request->ip()]);
 
+    $plain = $this->extractToken($request);
 
-    /**
-     * POST /api/auth/logout
-     * Header: Authorization: Bearer <token>
-     */
-    public function logout(Request $request)
-    {
-        Log::info('[UnzipExam Auth Logout] begin', ['ip' => $request->ip()]);
+    if (!$plain) {
+        Log::warning('[UnzipExam Auth Logout] missing token');
 
-        $plain = $this->extractToken($request);
-        if (!$plain) {
-            Log::warning('[UnzipExam Auth Logout] missing token');
-            return response()->json(['status'=>'error','message'=>'Token not provided'], 401);
-        }
-
-        $deleted = DB::table('personal_access_tokens')
-            ->where('token', hash('sha256', $plain))
-            ->where('tokenable_type', self::USER_TYPE)
-            ->delete();
-
-        Log::info('[UnzipExam Auth Logout] token removed', ['deleted'=>(bool)$deleted]);
+        $this->logActivity(
+            activity: 'logout_failed',
+            title: 'Logout failed - token missing',
+            description: 'Logout attempt failed because no token was provided.',
+            performedBy: 0,
+            performedByName: null,
+            targetId: null,
+            targetType: 'user',
+            properties: [
+                'reason' => 'token_missing',
+            ],
+            request: $request,
+            module: 'users'
+        );
 
         return response()->json([
-            'status'  => $deleted ? 'success' : 'error',
-            'message' => $deleted ? 'Logged out successfully' : 'Invalid token',
-        ], $deleted ? 200 : 401);
+            'status'  => 'error',
+            'message' => 'Token not provided'
+        ], 401);
     }
-         /**
+
+    $hashedToken = hash('sha256', $plain);
+
+    $tokenRow = DB::table('personal_access_tokens')
+        ->where('token', $hashedToken)
+        ->where('tokenable_type', self::USER_TYPE)
+        ->first();
+
+    $user = null;
+    if ($tokenRow && !empty($tokenRow->tokenable_id)) {
+        $user = DB::table('users')->where('id', $tokenRow->tokenable_id)->first();
+    }
+
+    $deleted = DB::table('personal_access_tokens')
+        ->where('token', $hashedToken)
+        ->where('tokenable_type', self::USER_TYPE)
+        ->delete();
+
+    if ($deleted) {
+        $this->logActivity(
+            activity: 'logout',
+            title: 'User logout successful',
+            description: 'User logged out successfully.',
+            performedBy: $user?->id ? (int) $user->id : 0,
+            performedByName: $user?->name ?? null,
+            targetId: $user?->id ?? null,
+            targetType: 'user',
+            properties: [
+                'email'  => $user?->email ?? null,
+                'reason' => 'token_revoked',
+                'role'   => $user?->role ?? null,
+            ],
+            request: $request,
+            module: 'users'
+        );
+    } else {
+        $this->logActivity(
+            activity: 'logout_failed',
+            title: 'Logout failed - invalid token',
+            description: 'Logout attempt failed because the token was invalid or already removed.',
+            performedBy: $user?->id ? (int) $user->id : 0,
+            performedByName: $user?->name ?? null,
+            targetId: $user?->id ?? null,
+            targetType: 'user',
+            properties: [
+                'email'  => $user?->email ?? null,
+                'reason' => 'invalid_token',
+                'role'   => $user?->role ?? null,
+            ],
+            request: $request,
+            module: 'users'
+        );
+    }
+
+    Log::info('[UnzipExam Auth Logout] token removed', ['deleted' => (bool) $deleted]);
+
+    return response()->json([
+        'status'  => $deleted ? 'success' : 'error',
+        'message' => $deleted ? 'Logged out successfully' : 'Invalid token',
+    ], $deleted ? 200 : 401);
+}
+  /**
      * GET /api/auth/my-role
      * Header: Authorization: Bearer <token>
      *
@@ -663,91 +971,128 @@ public function store(Request $request)
             'meta'  => ['count' => $rows->count()],
         ]);
     }
+public function index(Request $request)
+{
+    $page   = max(1, (int)$request->query('page', 1));
+    $pp     = min(100, max(1, (int)$request->query('per_page', 20)));
+    $q      = trim((string)$request->query('q', ''));
+    $status = $request->has('status') ? (string)$request->query('status') : 'active';
+    $role   = trim((string)$request->query('role', ''));
 
-    /**
-     * GET /api/users?page=&per_page=&q=&status=
-     * Paginated list.
-     */
-    public function index(Request $request)
-    {
-        $page   = max(1, (int)$request->query('page', 1));
-        $pp     = min(100, max(1, (int)$request->query('per_page', 20)));
-        $q      = trim((string)$request->query('q', ''));
-        // If the param is absent, default to 'active'; if it's 'all', apply no filter
-        $status = $request->has('status') ? (string)$request->query('status') : 'active';
+    // ── Only join assignment data when fetching students ──
+    $isStudentQuery = ($role === 'student');
 
-        $base = DB::table('users')->whereNull('deleted_at');
-        if ($status !== 'all' && $status !== '') {
-            $base->where('status', $status);
-        }
-        if ($q !== '') {
-            $like = "%{$q}%";
-            $base->where(function($w) use ($like){
-                $w->where('name','LIKE',$like)->orWhere('email','LIKE',$like);
-            });
-        }
+    if ($isStudentQuery) {
+        $base = DB::table('users as u')
+            ->leftJoin('student_counsellor_assignments as a', function ($join) {
+                $join->on('a.student_id', '=', 'u.id')
+                     ->whereNull('a.deleted_at');
+            })
+            ->leftJoin('users as c', 'c.id', '=', 'a.counsellor_id')
+            ->whereNull('u.deleted_at');
+    } else {
+        $base = DB::table('users as u')->whereNull('u.deleted_at');
+    }
 
-        $total = (clone $base)->count();
-        $rows  = $base->orderBy('name')
-            ->offset(($page-1)*$pp)->limit($pp)
-            ->select('id','uuid','cv','name','email','image','role','role_short_form','status','user_folder_id')
+    if ($status !== 'all' && $status !== '') {
+        $base->where('u.status', $status);
+    }
+    if ($q !== '') {
+        $like = "%{$q}%";
+        $base->where(function ($w) use ($like) {
+            $w->where('u.name', 'LIKE', $like)
+              ->orWhere('u.email', 'LIKE', $like);
+        });
+    }
+    if ($role !== '' && $role !== 'all') {
+        $base->where('u.role', $role);
+    }
+
+    $total = (clone $base)->count();
+
+    if ($isStudentQuery) {
+        $rows = $base->orderBy('u.name')
+            ->offset(($page - 1) * $pp)->limit($pp)
+            ->select([
+                'u.id',
+                'u.uuid',
+                'u.cv',
+                'u.name',
+                'u.email',
+                'u.image',
+                'u.role',
+                'u.role_short_form',
+                'u.status',
+                'u.user_folder_id',
+                // ── Assignment fields ──
+                'a.counsellor_id',
+                'a.assignment_status',
+                'c.name  as counsellor_name',   // normalize() picks this up as assignedTo
+                'c.uuid  as counsellor_uuid',
+            ])
             ->get();
-
-        return response()->json([
-            'status'=>'success',
-            'data'  =>$rows,
-            'meta'  =>[
-                'page'        =>$page,
-                'per_page'    =>$pp,
-                'total'       =>$total,
-                'total_pages' =>(int)ceil($total/$pp)
-            ],
-        ]);
+    } else {
+        $rows = $base->orderBy('u.name')
+            ->offset(($page - 1) * $pp)->limit($pp)
+            ->select('u.id','u.uuid','u.cv','u.name','u.email','u.image','u.role','u.role_short_form','u.status','u.user_folder_id')
+            ->get();
     }
 
-    /**
-     * GET /api/users/{id}
-     */
-    public function show(Request $request, int $id)
-    {
-        $user = DB::table('users')
-            ->where('id', $id)
-            ->whereNull('deleted_at')
-            ->first();
+    return response()->json([
+        'status' => 'success',
+        'data'   => $rows,
+        'meta'   => [
+            'page'        => $page,
+            'per_page'    => $pp,
+            'total'       => $total,
+            'total_pages' => (int) ceil($total / $pp),
+        ],
+    ]);
+}
+/**
+ * GET /api/users/{id}
+ */
+public function show(Request $request, int $id)
+{
+    $user = DB::table('users')
+        ->where('id', $id)
+        ->whereNull('deleted_at')
+        ->first();
 
-        if (!$user) {
-            return response()->json(['status'=>'error','message'=>'User not found'], 404);
-        }
-
+    if (!$user) {
         return response()->json([
-            'status'=>'success',
-            'user'  => [
-                'id'                        => (int)$user->id,
-                'uuid'                      => (string)($user->uuid ?? ''),
-                'name'                      => (string)($user->name ?? ''),
-                'email'                     => (string)($user->email ?? ''),
-                'phone_number'              => (string)($user->phone_number ?? ''),
-                'alternative_email'         => (string)($user->alternative_email ?? ''),
-                'alternative_phone_number'  => (string)($user->alternative_phone_number ?? ''),
-                'whatsapp_number'           => (string)($user->whatsapp_number ?? ''),
-                'image'                     => (string)($user->image ?? ''),
-                'address'                   => (string)($user->address ?? ''),
-                'role'                      => (string)($user->role ?? ''),
-                'role_short_form'           => (string)($user->role_short_form ?? ''),
-                'slug'                      => (string)($user->slug ?? ''),
-                'status'                    => (string)($user->status ?? ''),
-                'last_login_at'             => (string)($user->last_login_at ?? ''),
-                'last_login_ip'             => (string)($user->last_login_ip ?? ''),
-                'created_by'                => $user->created_by,
-                'user_folder_id' => isset($user->user_folder_id) ? (int)$user->user_folder_id : null,
-                'created_at'                => (string)$user->created_at,
-                'updated_at'                => (string)$user->updated_at,
-                'deleted_at'                => (string)($user->deleted_at ?? ''),
-            ],
-        ]);
+            'status'  => 'error',
+            'message' => 'User not found',
+        ], 404);
     }
 
-        /**
+    return response()->json([
+        'status' => 'success',
+        'user'   => [
+            'id'                       => (int) $user->id,
+            'uuid'                     => $user->uuid,
+            'name'                     => $user->name,
+            'email'                    => $user->email,
+            'phone_number'             => $user->phone_number,
+            'alternative_email'        => $user->alternative_email,
+            'alternative_phone_number' => $user->alternative_phone_number,
+            'whatsapp_number'          => $user->whatsapp_number,
+            'image'                    => $user->image,
+            'address'                  => $user->address,
+            'role'                     => $user->role,
+            'role_short_form'          => $user->role_short_form,
+            'slug'                     => $user->slug,
+            'status'                   => $user->status,
+            'last_login_at'            => $user->last_login_at,
+            'last_login_ip'            => $user->last_login_ip,
+            'created_by'               => $user->created_by,
+            'user_folder_id'           => $user->user_folder_id !== null ? (int) $user->user_folder_id : null,
+            'created_at'               => $user->created_at,
+            'updated_at'               => $user->updated_at,
+            'deleted_at'               => null,
+        ],
+    ]);
+}    /**
      * GET /api/users/{id}/quizzes
      * For ADMIN / SUPER_ADMIN.
      * Returns all quizzes + whether this user is assigned to each.
@@ -792,7 +1137,7 @@ public function store(Request $request)
                 'is_public'       => (string) ($q->is_public ?? 'no'),
                 'status'          => (string) ($q->status ?? 'active'),
 
-                'assigned'        => $a && $a->status === 'active',
+                'assigned' => $a && in_array($a->status, ['active', 'completed', 'attempted', 'used']),
                 'assignment_code' => $a && $a->status === 'active'
                                         ? (string) $a->assignment_code
                                         : null,
@@ -808,13 +1153,6 @@ public function store(Request $request)
 /**
  * PUT/PATCH /api/users/{id}
  * Partial update. If name changes, slug is regenerated.
- */
-/**
- * PUT/PATCH /api/users/{id}
- * Partial update. If name changes, slug is regenerated.
- * ✅ Supports admin-driven password change using:
- *   - current_password (admin's current password)
- *   - new_password     (target user's new password)
  */
 public function update(Request $request, int $id)
 {
@@ -849,10 +1187,6 @@ public function update(Request $request, int $id)
             'integer',
             Rule::exists('user_folders', 'id')->whereNull('deleted_at'),
         ],
-
-        // ✅ Password change (admin confirms their own password)
-        'current_password' => 'sometimes|required_with:new_password|string',
-        'new_password'     => 'sometimes|string|min:8|max:255',
     ]);
 
     if ($v->fails()) {
@@ -920,54 +1254,6 @@ public function update(Request $request, int $id)
         }
         $this->deleteManagedProfileImage($existing->image);
         $updates['image'] = $newUrl;
-    }
-
-    /* ============================
-     * ✅ PASSWORD UPDATE (ADMIN)
-     * ============================ */
-    if (!empty($data['new_password'] ?? null)) {
-
-        // Role check (from middleware attributes OR fallback to logged in user)
-        $actorRole = strtolower((string)($request->attributes->get('auth_role') ?? ''));
-        if (!$actorRole && auth()->check()) {
-            $actorRole = strtolower((string)(auth()->user()->role ?? ''));
-        }
-
-        if (!in_array($actorRole, ['admin','super_admin'], true)) {
-            return response()->json(['status'=>'error','message'=>'You are not allowed to change user password'], 403);
-        }
-
-        // Get actor/admin id (from middleware attributes OR fallback auth)
-        $actorId = (int)($request->attributes->get('auth_tokenable_id') ?? 0);
-        if ($actorId <= 0 && auth()->check()) {
-            $actorId = (int)auth()->id();
-        }
-
-        if ($actorId <= 0) {
-            return response()->json(['status'=>'error','message'=>'Unauthorized'], 401);
-        }
-
-        // Verify admin current password
-        $actor = DB::table('users')->where('id', $actorId)->whereNull('deleted_at')->first();
-        if (!$actor || empty($actor->password)) {
-            return response()->json(['status'=>'error','message'=>'Unauthorized'], 401);
-        }
-
-        $currentPw = (string)($data['current_password'] ?? '');
-        if (!Hash::check($currentPw, $actor->password)) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Current password is incorrect'
-            ], 422);
-        }
-
-        // ✅ Update target user's password
-        $updates['password'] = Hash::make((string)$data['new_password']);
-
-        // Optional: track password change time if column exists
-        if (Schema::hasColumn('users', 'password_changed_at')) {
-            $updates['password_changed_at'] = now();
-        }
     }
 
     if (empty($updates)) {
@@ -1241,43 +1527,89 @@ public function update(Request $request, int $id)
 
         return $code;
     }
+/**
+ * Normalize role & short code against allowed set.
+ * Accepts synonyms and variants like:
+ *  - "college administrator", "college-admin", "college_administrator", "cadm"
+ *  - "academic counsellor", "academic counselor", "acc"
+ *  - "author", "writer", "content writer", "aut"
+ */
+protected function normalizeRole(?string $role, ?string $short = null): array
+{
+    // Normalize input to a comparable key:
+    // - lowercase
+    // - underscores/hyphens -> spaces
+    // - collapse multiple spaces
+    $key = Str::of((string)$role)
+        ->lower()
+        ->trim()
+        ->replace(['_', '-'], ' ')
+        ->replaceMatches('/\s+/', ' ')
+        ->toString();
 
+    $map = [
+        // super admin
+        'super admin'          => 'super_admin',
+        'superadmin'           => 'super_admin',
+        'super administrator'  => 'super_admin',
+        'sa'                   => 'super_admin',
 
-    /**
-     * Normalize role & short code against allowed set.
-     * Accepts synonyms like "super admin", "super-admin", "sa",
-     * "invigilator", "proctor" -> "examiner", "students" -> "student".
-     */
-    protected function normalizeRole(?string $role, ?string $short = null): array
-    {
-        $r = Str::of((string)$role)->lower()->trim()->toString();
+        // admin
+        'admin'                => 'admin',
+        'administrator'        => 'admin',
+        'adm'                  => 'admin',
 
-        // common synonyms for Unzip Exam
-        $map = [
-            'super admin'   => 'super_admin',
-            'super-admin'   => 'super_admin',
-            'superadmin'    => 'super_admin',
-            'sa'            => 'super_admin',
-            'administrator' => 'admin',
-            'admin'         => 'admin',
-            'students'      => 'student',
-            'std'           => 'student',
-            'candidate'     => 'student',
-            'examiner'      => 'examiner',
-            'invigilator'   => 'examiner',
-            'proctor'       => 'examiner',
-        ];
+        // examiner
+        'examiner'             => 'examiner',
+        'invigilator'          => 'examiner',
+        'proctor'              => 'examiner',
+        'exam controller'      => 'examiner',
+        'exam admin'           => 'examiner',
+        'exm'                  => 'examiner',
 
-        if (isset($map[$r])) $r = $map[$r];
+        // student
+        'student'              => 'student',
+        'students'             => 'student',
+        'candidate'            => 'student',
+        'learner'              => 'student',
+        'std'                  => 'student',
+        'stu'                  => 'student',
 
-        if (!in_array($r, self::ROLES, true)) {
-            // fallback to student
-            $r = 'student';
-        }
+        // NEW: author
+        'author'               => 'author',
+        'writer'               => 'author',
+        'content writer'       => 'author',
+        'contentwriter'        => 'author',
+        'editor'               => 'author',
+        'aut'                  => 'author',
 
-        $short = $short ?: self::ROLE_SHORT[$r] ?? 'STD';
-        return [$r, strtoupper($short)];
+        // NEW: college administrator
+        'college administrator' => 'college_administrator',
+        'college admin'         => 'college_administrator',
+        'collegeadmin'          => 'college_administrator',
+        'coladmin'              => 'college_administrator',
+        'cadm'                  => 'college_administrator',
+
+        // NEW: academic counsellor (both spellings)
+        'academic counsellor'   => 'academic_counsellor',
+        'academic counselor'    => 'academic_counsellor',
+        'academic advisor'      => 'academic_counsellor',
+        'academic adviser'      => 'academic_counsellor',
+        'acc'                   => 'academic_counsellor',
+    ];
+
+    $r = $map[$key] ?? $key;
+
+    // Final allowlist guard
+    if (!in_array($r, self::ROLES, true)) {
+        $r = 'student'; // fallback
     }
+
+    // Short form: prefer incoming, else default mapping
+    $short = $short ?: (self::ROLE_SHORT[$r] ?? 'STD');
+
+    return [$r, strtoupper($short)];
+}
 
     /** Save profile image into /Public/UserProfileImage and return absolute URL (or false on failure). */
     /** Save profile image into /public/UserProfileImage and return RELATIVE path (or false). */
@@ -1763,8 +2095,10 @@ public function getProfile(Request $request)
     }
 
     // Role-based frontend permissions
-    $isEditable = in_array($user->role, ['admin', 'super_admin','student','instructor']);
-
+    $isEditable = in_array($user->role, [
+    'admin','super_admin','student',
+    'author','college_administrator','academic_counsellor'
+]);
     $permissions = [
         'can_edit_profile'   => $isEditable,
         'can_change_image'   => $isEditable,
@@ -2538,5 +2872,120 @@ protected function deleteManagedCv(?string $pathOrUrl): void
             @File::delete($abs);
         }
     }
+}
+public function freshLeads(Request $request)
+{
+    $page = max(1, (int) $request->query('page', 1));
+    $pp   = min(100, max(1, (int) $request->query('per_page', 20)));
+    $q    = trim((string) $request->query('q', ''));
+
+    // ✅ detect phone-like column
+    $phoneCol = null;
+    if (Schema::hasColumn('users', 'phone')) {
+        $phoneCol = 'u.phone';
+    } elseif (Schema::hasColumn('users', 'phone_number')) {
+        $phoneCol = 'u.phone_number';
+    } elseif (Schema::hasColumn('users', 'mobile')) {
+        $phoneCol = 'u.mobile';
+    }
+
+    $base = DB::table('users as u')
+        ->leftJoin('student_personal_academic_details as sp', 'sp.user_id', '=', 'u.id')
+
+        // ✅ one active assignment per student
+        ->leftJoin('student_counsellor_assignments as a', function ($join) {
+            $join->on('a.student_id', '=', 'u.id')
+                 ->whereNull('a.deleted_at');
+        })
+
+        ->leftJoin('users as c', 'c.id', '=', 'a.counsellor_id')
+
+        ->whereNull('u.deleted_at')
+        ->whereIn('u.role', ['student', 'students'])
+        ->where('u.status', 'active')
+
+        // ✅ fresh leads (no active assignment row)
+        ->whereNull('a.counsellor_id')
+
+        // ✅ only students who have at least one result in quizz_results
+        ->whereExists(function ($sub) {
+            $sub->select(DB::raw(1))
+                ->from('quizz_results as qr')
+                ->whereColumn('qr.user_id', 'u.id');
+        });
+
+    if ($q !== '') {
+        $like = "%{$q}%";
+        $base->where(function ($w) use ($like, $phoneCol) {
+            $w->where('u.name', 'LIKE', $like)
+              ->orWhere('u.email', 'LIKE', $like);
+
+            if ($phoneCol) {
+                $w->orWhere($phoneCol, 'LIKE', $like);
+            }
+
+            $w->orWhere('sp.guardian_name', 'LIKE', $like)
+              ->orWhere('sp.guardian_number', 'LIKE', $like)
+              ->orWhere('sp.class', 'LIKE', $like)
+              ->orWhere('sp.board', 'LIKE', $like)
+              ->orWhere('sp.exam_type', 'LIKE', $like);
+        });
+    }
+
+    $total = (clone $base)->count();
+
+    $select = [
+        'u.id',
+        'u.uuid',
+        'u.cv',
+        'u.name',
+        'u.email',
+        'u.image',
+        'u.role',
+        'u.role_short_form',
+        'u.status',
+        'u.user_folder_id',
+        'u.created_at',
+
+        // academic/personal details
+        'sp.guardian_name',
+        'sp.guardian_number',
+        'sp.class as student_class',
+        'sp.board',
+        'sp.exam_type',
+        'sp.year_of_passout',
+
+        // assignment + counsellor
+        'a.uuid as assignment_uuid',
+        'a.counsellor_id',
+        'a.assignment_status',
+        'a.assigned_at',
+        'a.ended_at',
+        'c.name as academic_counsellor_name',
+        'c.uuid as academic_counsellor_uuid',
+    ];
+
+    // ✅ add phone field only if exists
+    if ($phoneCol) {
+        $select[] = DB::raw($phoneCol . ' as phone');
+    }
+
+    $rows = $base
+        ->orderBy('u.created_at', 'asc')
+        ->offset(($page - 1) * $pp)
+        ->limit($pp)
+        ->select($select)
+        ->get();
+
+    return response()->json([
+        'status' => 'success',
+        'data'   => $rows,
+        'meta'   => [
+            'page'        => $page,
+            'per_page'    => $pp,
+            'total'       => $total,
+            'total_pages' => (int) ceil($total / $pp),
+        ],
+    ]);
 }
 }

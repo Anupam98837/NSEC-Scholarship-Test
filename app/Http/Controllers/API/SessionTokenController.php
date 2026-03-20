@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 class SessionTokenController extends Controller
 {
     public function check(Request $request)
-    {
+    { 
         $bearer = (string) $request->bearerToken();
 
         if (!$bearer) {

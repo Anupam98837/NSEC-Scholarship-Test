@@ -20,7 +20,8 @@
  <style>
   /* =========================
      Namespaced Login (ux-*)
-     - LEFT stays perfectly centered
+     - Single centered view (no 2-side layout)
+     - Form stays perfectly centered
      - LEFT can scroll when needed
      - Scrollbar hidden
      - Safe for all laptop ratios / zoom
@@ -36,7 +37,7 @@
   }
 
   /* =========================
-     GRID (stable viewport)
+     GRID (single column)
      ========================= */
   .ux-grid{
     height:100vh;
@@ -47,36 +48,15 @@
     min-height:100dvh;
 
     display:grid;
-    grid-template-columns: minmax(420px,560px) 1fr;
+    grid-template-columns: 1fr;
     width:100%;
   }
 
   /* Prevent overflow in weird ratios */
-  .ux-left, .ux-right{ min-width:0; }
-
-  /* Slightly shrink left column on smaller laptops */
-  @media (max-width: 1440px){
-    .ux-grid{ grid-template-columns: minmax(400px,540px) 1fr; }
-  }
-  @media (max-width: 1366px){
-    .ux-grid{ grid-template-columns: minmax(380px,520px) 1fr; }
-  }
-  @media (max-width: 1280px){
-    .ux-grid{ grid-template-columns: minmax(360px,500px) 1fr; }
-  }
-  @media (max-width: 1200px){
-    .ux-grid{ grid-template-columns: minmax(340px,480px) 1fr; }
-  }
-  @media (max-width: 1100px){
-    .ux-grid{ grid-template-columns: minmax(320px,460px) 1fr; }
-  }
-
-  @media (max-width: 992px){
-    .ux-grid{ grid-template-columns: 1fr; }
-  }
+  .ux-left{ min-width:0; }
 
   /* =========================
-     LEFT: form column
+     CENTER: form column
      - Centered always (even when scroll)
      - Scrollbar hidden
      ========================= */
@@ -84,6 +64,11 @@
     height:100vh;
     height:100svh;
     height:100dvh;
+
+    /* center the whole column */
+    width:100%;
+    max-width: 760px;          /* keeps the page nicely centered on desktop */
+    justify-self:center;
 
     display:flex;
     flex-direction:column;
@@ -119,7 +104,7 @@
     border-radius:50%;
     filter: blur(26px);
     opacity:.25;
-    display:none;
+    display:block; /* previously only mobile; now single-view so keep it */
   }
   .ux-left::before{
     width:320px; height:320px;
@@ -133,9 +118,6 @@
     background: radial-gradient(closest-side, var(--accent-color), transparent 70%);
     animation: ux-floatB 11s ease-in-out infinite;
   }
-  @media (max-width: 992px){
-    .ux-left::before, .ux-left::after{ display:block; }
-  }
 
   .ux-brand{
     display:grid;
@@ -146,7 +128,7 @@
     max-width:100%;
   }
   .ux-brand img{
-    height:70px;
+    height:170px;
     max-width:100%;
     object-fit:contain;
   }
@@ -276,191 +258,10 @@
   }
 
   /* =========================
-     RIGHT visuals (hidden on mobile)
-     ========================= */
-  .ux-right{
-    position:relative;
-    height:100vh;
-    height:100svh;
-    height:100dvh;
-
-    display:grid;
-    place-items:center;
-    background:
-      radial-gradient(120% 100% at 5% 10%, rgba(20,184,166,.18) 0%, rgba(8,47,73,0) 55%),
-      linear-gradient(180deg,#022c22,#020617);
-    isolation:isolate;
-    overflow:hidden;
-  }
-  @media (max-width: 992px){
-    .ux-right{ display:none; }
-  }
-
-  .ux-arc{
-    position:absolute;
-    inset: -18% -10% auto auto;
-    width:120%; height:140%;
-    background:radial-gradient(110% 110% at 80% 20%,
-      rgba(45,212,191,.24) 0%,
-      rgba(15,118,110,.18) 35%,
-      rgba(15,23,42,0) 62%);
-    border-bottom-left-radius:48% 44%;
-    pointer-events:none;
-    animation: ux-drift 16s ease-in-out infinite;
-  }
-  .ux-ring{
-    position:absolute;
-    inset:auto -120px -80px auto;
-    width:420px; height:420px;
-    border-radius:50%;
-    background:
-      radial-gradient(closest-side, rgba(255,255,255,.14), rgba(255,255,255,0) 70%),
-      conic-gradient(from 0deg,
-        rgba(20,184,166,.25),
-        rgba(56,189,248,.25),
-        rgba(20,184,166,.25));
-    filter:blur(18px);
-    opacity:.18;
-    pointer-events:none;
-    animation: ux-spin 24s linear infinite;
-  }
-
-  .ux-hero{
-    position:relative;
-    width:min(680px, 96%);
-    aspect-ratio: 3/4;
-    animation: ux-pop .7s ease-out both;
-    max-width:100%;
-  }
-
-  /* Scale hero down on smaller widths/heights */
-  @media (max-width: 1366px){
-    .ux-hero{ width:min(600px, 96%); }
-  }
-  @media (max-width: 1200px){
-    .ux-hero{ width:min(560px, 96%); }
-  }
-  @media (max-height: 760px){
-    .ux-hero{ width:min(560px, 96%); }
-  }
-  @media (max-height: 680px){
-    .ux-hero{ width:min(520px, 96%); }
-  }
-
-  .ux-hero-frame{
-    position:relative;
-    width:100%; height:100%;
-    padding:20px;
-    border-radius:36px;
-    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-    box-shadow:
-      0 24px 54px rgba(0,0,0,.35),
-      0 0 0 1px rgba(255,255,255,.06) inset;
-    transition: transform .25s ease, box-shadow .25s ease;
-    will-change: transform;
-  }
-  .ux-hero-img{
-    width:100%; height:100%;
-    border-radius:24px;
-    overflow:hidden;
-    position:relative;
-    box-shadow:0 18px 40px rgba(0,0,0,.35);
-  }
-  .ux-hero-img img{
-    width:100%; height:100%;
-    object-fit:cover;
-    display:block;
-    transform:translateZ(0);
-    animation: ux-zoom 26s ease-in-out infinite alternate;
-    will-change: transform;
-  }
-  .ux-particles{
-    position:absolute;
-    inset:0;
-    pointer-events:none;
-    opacity:.28;
-    background:
-      radial-gradient(#ffffff 1px, transparent 2px) 0 0/22px 22px,
-      radial-gradient(#ffffff 1px, transparent 2px) 11px 11px/22px 22px;
-    mix-blend-mode: overlay;
-    animation: ux-twinkle 12s linear infinite;
-  }
-
-  .ux-hero:hover .ux-hero-frame{
-    transform:translateY(-4px);
-    box-shadow:
-      0 30px 64px rgba(0,0,0,.42),
-      0 0 0 1px rgba(255,255,255,.10) inset,
-      0 0 0 8px rgba(20,184,166,.10);
-  }
-
-  /* Small decorative exam objects */
-  .ux-obj{
-    position:absolute;
-    z-index:3;
-    opacity:.9;
-    filter: drop-shadow(0 8px 18px rgba(0,0,0,.28));
-    user-select:none;
-    pointer-events:none;
-  }
-  .ux-badges{
-    top: clamp(18px, 3vw, 36px);
-    left: clamp(12px, 2vw, 28px);
-    display:grid;
-    gap:6px;
-  }
-  .ux-badge-pill{
-    min-width:120px; height:24px;
-    padding:0 12px;
-    border-radius:999px;
-    font-size:11px;
-    display:flex;align-items:center;gap:6px;
-    background:rgba(15,118,110,.88);
-    color:#e0f2f1;
-  }
-  .ux-badge-pill:nth-child(2){
-    background:rgba(8,47,73,.9);
-  }
-  .ux-badge-pill:nth-child(3){
-    background:rgba(234,179,8,.92);
-    color:#0b1120;
-  }
-
-  .ux-cardstack{
-    right: clamp(16px, 3vw, 36px);
-    bottom: clamp(18px, 3vw, 36px);
-    width:120px; height:110px;
-    position:relative;
-  }
-  .ux-cardstack-slot{
-    position:absolute;
-    inset:auto 0 0 0;
-    height:70px;
-    border-radius:16px;
-    background:linear-gradient(160deg,#022c22,#0f172a);
-    border:1px solid rgba(255,255,255,.12);
-  }
-  .ux-ticket{
-    position:absolute;
-    left:8px; bottom:32px;
-    width:86px; height:42px;
-    border-radius:10px;
-    background:linear-gradient(145deg,#22c55e,#15803d);
-    box-shadow:0 8px 18px rgba(0,0,0,.4);
-    transform-origin:bottom left;
-    animation: ux-sway 5s ease-in-out infinite;
-  }
-  .ux-ticket:nth-child(3){
-    left:32px; bottom:52px;
-    background:linear-gradient(145deg,#38bdf8,#0ea5e9);
-    animation-delay:.7s;
-  }
-
-  /* =========================
      Height tightening (without breaking centering)
      ========================= */
   @media (max-height: 820px){
-    .ux-brand img{ height:64px; }
+    .ux-brand img{ height:103px; }
     .ux-sub{ margin-bottom:12px; }
     .ux-card{ padding:20px; }
   }
@@ -485,7 +286,7 @@
   /* Mobile fine-tuning */
   @media (max-width: 576px){
     .ux-left{ padding:16px; }
-    .ux-brand img{ height:60px; }
+    .ux-brand img{ height:80px; }
     .ux-card{ padding:18px; border-radius:16px; }
     .ux-control{ height:44px; }
     .ux-login{ height:46px; }
@@ -494,26 +295,6 @@
   /* =========================
      Animations
      ========================= */
-  @keyframes ux-pop{
-    from{opacity:0; transform:translateY(10px) scale(.98);}
-    to{opacity:1; transform:none;}
-  }
-  @keyframes ux-zoom{
-    from{transform:scale(1);}
-    to{transform:scale(1.06);}
-  }
-  @keyframes ux-drift{
-    0%,100%{transform:translate3d(0,0,0);}
-    50%{transform:translate3d(-2%,2%,0);}
-  }
-  @keyframes ux-spin{
-    0%{ transform:rotate(0deg);}
-    100%{ transform:rotate(360deg);}
-  }
-  @keyframes ux-sway{
-    0%,100%{ transform:rotate(-3deg);}
-    50%{ transform:rotate(3deg);}
-  }
   @keyframes ux-floatA{
     0%,100%{ transform:translate(0,0);}
     50%{ transform:translate(10px, -14px);}
@@ -536,25 +317,20 @@
     0%,100%{ transform:translateY(0);}
     50%{ transform:translateY(-6px);}
   }
-  @keyframes ux-twinkle{
-    0%{opacity:.22;}
-    50%{opacity:.34;}
-    100%{opacity:.22;}
-  }
 </style>
 
 </head>
 <body class="ux-auth-body">
 
 <div class="ux-grid">
-  <!-- LEFT: LOGIN FORM -->
+  <!-- CENTER: LOGIN FORM -->
   <section class="ux-left">
     <div class="ux-brand">
       {{-- Put your Unzip Exam logo here --}}
-      <img src="{{ asset('/assets/media/images/web/logo.png') }}" alt="Unzip Examination">
+      <img src="{{ asset('/assets/media/images/web/logo.jpg') }}" alt="Unzip Examination">
     </div>
 
-    <h1 class="ux-title">Welcome to Unzip Examination</h1>
+    <h1 class="ux-title">Welcome to {{ config('app.name') }}    </h1>
     <p class="ux-sub">Sign in to manage exams, students, and results.</p>
 
     <form class="ux-card" id="ux_form" action="/login" method="post" novalidate>
@@ -598,41 +374,6 @@
       </button>
     </form>
   </section>
-
-  <!-- RIGHT: VISUAL (hidden on mobile) -->
-  <aside class="ux-right" id="ux_visual">
-    <span class="ux-arc" aria-hidden="true"></span>
-    <span class="ux-ring" aria-hidden="true"></span>
-
-    <div class="ux-obj ux-badges" aria-hidden="true">
-      <div class="ux-badge-pill">
-        <i class="fa-solid fa-clipboard-check"></i> Secure assessments
-      </div>
-      <div class="ux-badge-pill">
-        <i class="fa-solid fa-user-graduate"></i> Student analytics
-      </div>
-      <div class="ux-badge-pill">
-        <i class="fa-solid fa-clock"></i> Real-time monitoring
-      </div>
-    </div>
-
-    <div class="ux-obj ux-cardstack" aria-hidden="true">
-      <div class="ux-cardstack-slot"></div>
-      <div class="ux-ticket"></div>
-      <div class="ux-ticket"></div>
-    </div>
-
-    <div class="ux-hero" id="ux_hero">
-      <div class="ux-hero-frame">
-        <div class="ux-hero-img">
-          <img
-            src="https://images.unsplash.com/photo-1523580846011-d3a5bc25702b?w=1600&auto=format&fit=crop&q=80"
-            alt="Students taking an online examination">
-          <div class="ux-particles" aria-hidden="true"></div>
-        </div>
-      </div>
-    </div>
-  </aside>
 </div>
 
 <script>
@@ -766,7 +507,7 @@
             'Content-Type': 'application/json',
             'X-CSRF-TOKEN': csrf
           },
-          body: JSON.stringify({ email: identifier, password, remember: keep })
+         body: JSON.stringify({ login: identifier, password, remember: keep })
         });
 
         const data = await res.json().catch(() => ({}));
@@ -801,90 +542,6 @@
         setBusy(false);
       }
     });
-
-    // ---- Parallax hero (desktop only) ----
-    (function(){
-      const stage  = document.getElementById('ux_visual');
-      const hero   = document.getElementById('ux_hero');
-      const frame  = document.querySelector('.ux-hero-frame');
-      const img    = document.querySelector('.ux-hero-img img');
-      if (!stage || !frame || !img || !hero) return;
-
-      const mq = window.matchMedia('(max-width: 992px)');
-      let targetTX = 0, targetTY = 0, targetRX = 0, targetRY = 0;
-      let currTX = 0, currTY = 0, currRX = 0, currRY = 0;
-      let rafId = null;
-
-      const MAX_T = 18, MAX_RX = 6, MAX_RY = 8, LERP = 0.12;
-
-      function onMove(e){
-        const rect = stage.getBoundingClientRect();
-        const cx = rect.left + rect.width/2;
-        const cy = rect.top  + rect.height/2;
-        const dx = (e.clientX - cx) / (rect.width/2);
-        const dy = (e.clientY - cy) / (rect.height/2);
-        const ndx = Math.max(-1, Math.min(1, dx));
-        const ndy = Math.max(-1, Math.min(1, dy));
-
-        targetTX = ndx * MAX_T;
-        targetTY = ndy * MAX_T;
-        targetRY = ndx * MAX_RY;
-        targetRX = -ndy * MAX_RX;
-
-        if (!hero.classList.contains('is-tracking')){
-          hero.classList.add('is-tracking');
-          tick();
-        }
-      }
-      function onLeave(){
-        targetTX = targetTY = targetRX = targetRY = 0;
-      }
-      function tick(){
-        currTX += (targetTX - currTX) * LERP;
-        currTY += (targetTY - currTY) * LERP;
-        currRX += (targetRX - currRX) * LERP;
-        currRY += (targetRY - currRY) * LERP;
-
-        frame.style.transform =
-          `translate3d(${currTX.toFixed(2)}px, ${currTY.toFixed(2)}px, 0)
-           rotateX(${currRX.toFixed(2)}deg)
-           rotateY(${currRY.toFixed(2)}deg)`;
-
-        const ix = (-currTX * 0.6).toFixed(2);
-        const iy = (-currTY * 0.6).toFixed(2);
-        img.style.transform = `translate3d(${ix}px, ${iy}px, 0) scale(1.05)`;
-
-        const nearZero =
-          Math.abs(currTX) < 0.15 && Math.abs(currTY) < 0.15 &&
-          Math.abs(currRX) < 0.08 && Math.abs(currRY) < 0.08 &&
-          Math.abs(targetTX) < 0.15 && Math.abs(targetTY) < 0.15 &&
-          Math.abs(targetRX) < 0.08 && Math.abs(targetRY) < 0.08;
-
-        if (!nearZero){
-          rafId = requestAnimationFrame(tick);
-        } else {
-          frame.style.transform = 'translate3d(0,0,0) rotateX(0) rotateY(0)';
-          img.style.transform = 'translate3d(0,0,0) scale(1)';
-          hero.classList.remove('is-tracking');
-          rafId && cancelAnimationFrame(rafId);
-          rafId = null;
-        }
-      }
-      function attach(){
-        if (mq.matches) return;
-        stage.addEventListener('mousemove', onMove);
-        stage.addEventListener('mouseleave', onLeave);
-      }
-      function detach(){
-        stage.removeEventListener('mousemove', onMove);
-        stage.removeEventListener('mouseleave', onLeave);
-        onLeave();
-      }
-
-      attach();
-      mq.addEventListener('change', () => { detach(); attach(); });
-      window.addEventListener('blur', onLeave);
-    })();
   })();
 </script>
 </body>

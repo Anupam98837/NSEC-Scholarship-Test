@@ -870,8 +870,6 @@ g            <div class="stdash-list-main">
     if (role === 'student') window.initializeStudentDashboard();
   });
 
-  // ========= Standalone student dashboard page support =========
-  // If this page is opened directly (no multi-role shell), initialize on DOM ready.
   document.addEventListener('DOMContentLoaded', function () {
     const dashStudent = document.getElementById('dashStudent');
     const standalone = !dashStudent; // no role-switch wrapper => standalone page

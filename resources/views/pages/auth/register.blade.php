@@ -18,12 +18,6 @@
   <link rel="stylesheet" href="{{ asset('/assets/css/common/main.css') }}"/>
 
   <style>
-    /* =========================
-      Namespaced Register (ux-*)
-      - SAME UI system as login page
-      - ✅ FIX: don't clip submit button on small height / zoom
-      ========================= */
-
     html, body { height:100%; }
 
     body.ux-auth-body{
@@ -36,15 +30,15 @@
     }
 
     .ux-grid{
-      min-height:100vh;
-      min-height:100svh;
-      min-height:100dvh;
-      height:auto;
-
-      display:grid;
-      grid-template-columns: minmax(420px,560px) 1fr;
-      width:100%;
-    }
+  min-height:100vh;
+  min-height:100svh;
+  min-height:100dvh;
+  height:auto;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  width:100%;
+}
     .ux-left, .ux-right{ min-width:0; }
 
     @media (max-width: 1440px){ .ux-grid{ grid-template-columns: minmax(400px,540px) 1fr; } }
@@ -55,23 +49,23 @@
     @media (max-width: 992px){ .ux-grid{ grid-template-columns: 1fr; } }
 
     .ux-left{
-      min-height:100vh;
-      min-height:100svh;
-      min-height:100dvh;
-      height:auto;
-
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      justify-content:flex-start;
-
-      padding:clamp(18px,5vw,56px);
-      padding-bottom:clamp(22px,5vw,64px);
-
-      position:relative;
-      isolation:isolate;
-      overflow:visible;
-    }
+  min-height:100vh;
+  min-height:100svh;
+  min-height:100dvh;
+  height:auto;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:clamp(18px,5vw,56px);
+  padding-bottom:clamp(22px,5vw,64px);
+  position:relative;
+  isolation:isolate;
+  overflow:visible;
+  width:100%;
+  max-width:560px;
+  margin:0 auto;
+}
 
     .ux-brand{ margin-top:0; }
     #ux_form{ margin-bottom:0; }
@@ -121,7 +115,7 @@
       padding:24px;
       box-shadow:var(--shadow-2);
       width:100%;
-      max-width:min(460px, 100%);
+      max-width:min(760px, 100%);
       overflow:hidden;
       display:flex;
       flex-direction:column;
@@ -175,6 +169,13 @@
 
     .ux-control::placeholder{ color:#aab2c2; }
 
+    /* disabled password field style */
+    .ux-control:disabled{
+      opacity:.5;
+      cursor:not-allowed;
+      background:var(--bg-body, #f8fafc);
+    }
+
     .ux-eye{
       position:absolute;
       top:50%; right:10px;
@@ -218,9 +219,15 @@
       transition:var(--transition);
       margin-top:6px;
     }
-    .ux-login:hover{
+    .ux-login:hover:not(:disabled){
       filter:brightness(.98);
       transform:translateY(-1px);
+    }
+    .ux-login:disabled{
+      opacity:.55;
+      cursor:not-allowed;
+      transform:none;
+      filter:none;
     }
 
     .ux-field-err{
@@ -230,6 +237,62 @@
       display:none;
     }
     .ux-field-err.show{ display:block; }
+
+    .ux-phone-row,
+    .ux-otp-row{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      gap:10px;
+      align-items:center;
+    }
+
+    .ux-phone-row .ux-control,
+    .ux-otp-row .ux-control{
+      padding-right:14px;
+    }
+
+    .ux-mini-btn{
+      height:46px;
+      min-width:92px;
+      border:none;
+      border-radius:12px;
+      padding:0 14px;
+      font-weight:700;
+      color:#fff;
+      white-space:nowrap;
+      background:linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--secondary-color) 92%, #fff 8%),
+        var(--secondary-color)
+      );
+      box-shadow:0 10px 22px rgba(2, 132, 199, .18);
+      transition:var(--transition);
+    }
+    .ux-mini-btn:hover:not(:disabled){
+      filter:brightness(.98);
+      transform:translateY(-1px);
+    }
+    .ux-mini-btn:disabled{
+      opacity:.7;
+      cursor:not-allowed;
+      transform:none;
+      filter:none;
+    }
+
+    .ux-hint{
+      margin-top:8px;
+      font-size:.84rem;
+      color:var(--muted-color);
+    }
+
+    .ux-verified{
+      display:none;
+      margin-top:8px;
+      font-size:.84rem;
+      font-weight:600;
+      color:#198754;
+    }
+    .ux-verified.show{ display:block; }
 
     /* RIGHT visuals */
     .ux-right{
@@ -245,9 +308,7 @@
       isolation:isolate;
       overflow:hidden;
     }
-    @media (max-width: 992px){
-      .ux-right{ display:none; }
-    }
+    @media (max-width: 992px){ .ux-right{ display:none; } }
 
     .ux-arc{
       position:absolute;
@@ -351,49 +412,37 @@
       color:#e0f2f1;
     }
     .ux-badge-pill:nth-child(2){ background:rgba(8,47,73,.9); }
-    .ux-badge-pill:nth-child(3){
-      background:rgba(234,179,8,.92);
-      color:#0b1120;
-    }
+    .ux-badge-pill:nth-child(3){ background:rgba(234,179,8,.92); color:#0b1120; }
 
     @media (max-width: 576px){
       .ux-left{ padding:16px; padding-bottom:26px; }
       .ux-brand img{ height:60px; }
       .ux-card{ padding:18px; border-radius:16px; }
       .ux-control{ height:44px; }
+      .ux-mini-btn{ height:44px; min-width:84px; }
       .ux-login{ height:46px; }
+      .ux-phone-row, .ux-otp-row{ grid-template-columns: 1fr; }
     }
 
-    @keyframes ux-pop{
-      from{opacity:0; transform:translateY(10px) scale(.98);}
-      to{opacity:1; transform:none;}
-    }
+    @keyframes ux-pop{ from{opacity:0; transform:translateY(10px) scale(.98);} to{opacity:1; transform:none;} }
     @keyframes ux-zoom{ from{transform:scale(1);} to{transform:scale(1.06);} }
-    @keyframes ux-drift{
-      0%,100%{transform:translate3d(0,0,0);}
-      50%{transform:translate3d(-2%,2%,0);}
-    }
+    @keyframes ux-drift{ 0%,100%{transform:translate3d(0,0,0);} 50%{transform:translate3d(-2%,2%,0);} }
     @keyframes ux-spin{ 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
     @keyframes ux-orbitA{ 0%{transform:translate(0,0);} 50%{transform:translate(6px, -6px);} 100%{transform:translate(0,0);} }
     @keyframes ux-orbitB{ 0%{transform:translate(-6px, 6px);} 100%{transform:translate(0,0);} }
-    @keyframes ux-chip{
-      0%,100%{ transform:translateY(0);}
-      50%{ transform:translateY(-6px);}
-    }
-    @keyframes ux-twinkle{
-      0%{opacity:.22;}
-      50%{opacity:.34;}
-      100%{opacity:.22;}
-    }
+    @keyframes ux-chip{ 0%,100%{ transform:translateY(0);} 50%{ transform:translateY(-6px);} }
+    @keyframes ux-twinkle{ 0%{opacity:.22;} 50%{opacity:.34;} 100%{opacity:.22;} }
   </style>
 </head>
 
 <body class="ux-auth-body">
 
 @php
-  $REGISTER_API    = url('/api/auth/student-register');
-  $LOGIN_URL       = url('/login');
-  $REDIRECT_AFTER  = url('/dashboard');
+  $REGISTER_API   = url('/api/auth/student-register');
+  $SEND_OTP_API   = url('/api/auth/send-phone-otp');
+  $VERIFY_OTP_API = url('/api/auth/verify-phone-otp');
+  $LOGIN_URL      = url('/');
+  $REDIRECT_AFTER = url('/dashboard');
 @endphp
 
 <div class="ux-grid">
@@ -401,23 +450,20 @@
   <!-- LEFT -->
   <section class="ux-left">
     <div class="ux-brand">
-      <img src="{{ asset('/assets/media/images/web/logo.png') }}" alt="Unzip Examination">
+      <img src="{{ asset('/assets/media/images/web/logo.jpg') }}" alt="Unzip Examination">
     </div>
 
-    {{-- ✅ Campaign Title auto-filled by UID --}}
-    <h1 class="ux-title" id="ux_campaignTitle">Student Registration</h1>
-    <p class="ux-sub" id="ux_campaignSub">Create your account to proceed.</p>
+    <h1 class="ux-title">Student Registration</h1>
+    <p class="ux-sub">Create your account to proceed.</p>
 
     <form class="ux-card" id="ux_form" novalidate>
-      <span class="ux-float-chip"><i class="fa-solid fa-shield-halved me-1"></i>Secure • Token based</span>
+      <span class="ux-float-chip"><i class="fa-solid fa-shield-halved me-1"></i>Secure • OTP verified</span>
 
       <!-- Inline alert -->
       <div id="ux_alert" class="alert d-none mb-3" role="alert"></div>
 
-      {{-- ✅ Hidden fields (folder + campaign uid) --}}
-      <input type="hidden" id="ux_folder_id" value="">
-      <input type="hidden" id="ux_campaign_uid" value="">
-      <div class="ux-field-err" id="err_user_folder_id"></div>
+      <input type="hidden" id="ux_phone_verified" value="0">
+      <input type="hidden" id="ux_verification_token" value="">
 
       <!-- Name -->
       <div class="mb-3">
@@ -429,32 +475,46 @@
         <div class="ux-field-err" id="err_name"></div>
       </div>
 
-      <!-- Email -->
-      <div class="mb-3">
-        <label class="ux-label form-label" for="ux_email">Email</label>
-        <div class="ux-input-wrap">
-          <input id="ux_email" type="email" class="ux-control form-control"
-                 placeholder="you@example.com" required>
-        </div>
-        <div class="ux-field-err" id="err_email"></div>
-      </div>
-
-      <!-- Phone -->
+      <!-- Phone + OTP button -->
       <div class="mb-3">
         <label class="ux-label form-label" for="ux_phone">Phone Number</label>
-        <div class="ux-input-wrap">
-          <input id="ux_phone" type="text" class="ux-control form-control"
-                 placeholder="90000 00000" required>
+        <div class="ux-phone-row">
+          <div class="ux-input-wrap">
+            <input id="ux_phone" type="text" class="ux-control form-control"
+                   placeholder="90000 00000" inputmode="numeric" autocomplete="tel" required>
+          </div>
+          <button type="button" class="ux-mini-btn" id="ux_sendOtpBtn">
+            OTP
+          </button>
         </div>
         <div class="ux-field-err" id="err_phone_number"></div>
+        <div class="ux-hint" id="ux_phoneHint">Click OTP to receive a verification code on your phone.</div>
+        <div class="ux-verified" id="ux_phoneVerifiedMsg">
+          <i class="fa-solid fa-circle-check me-1"></i>Phone number verified successfully.
+        </div>
       </div>
 
-      <!-- Password -->
+      <!-- OTP block -->
+      <div class="mb-3 d-none" id="ux_otpBlock">
+        <label class="ux-label form-label" for="ux_otp">Enter OTP</label>
+        <div class="ux-otp-row">
+          <div class="ux-input-wrap">
+            <input id="ux_otp" type="text" class="ux-control form-control"
+                   placeholder="Enter OTP" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+          </div>
+          <button type="button" class="ux-mini-btn" id="ux_verifyOtpBtn">
+            Verify
+          </button>
+        </div>
+        <div class="ux-field-err" id="err_otp"></div>
+      </div>
+
+      <!-- Password — always visible, disabled until OTP verified -->
       <div class="mb-3">
         <label class="ux-label form-label" for="ux_pw">Password</label>
         <div class="ux-input-wrap">
           <input id="ux_pw" type="password" class="ux-control form-control"
-                 placeholder="Minimum 8+ characters" minlength="8" required>
+                 placeholder="Minimum 8+ characters" minlength="8" required disabled>
           <button type="button" class="ux-eye" id="ux_togglePw" aria-label="Toggle password visibility">
             <i class="fa-regular fa-eye-slash" aria-hidden="true"></i>
           </button>
@@ -462,12 +522,12 @@
         <div class="ux-field-err" id="err_password"></div>
       </div>
 
-      <!-- Confirm Password -->
+      <!-- Confirm Password — always visible, disabled until OTP verified -->
       <div class="mb-2">
         <label class="ux-label form-label" for="ux_pw2">Confirm Password</label>
         <div class="ux-input-wrap">
           <input id="ux_pw2" type="password" class="ux-control form-control"
-                 placeholder="Re-type password" minlength="8" required>
+                 placeholder="Re-type password" minlength="8" required disabled>
           <button type="button" class="ux-eye" id="ux_togglePw2" aria-label="Toggle confirm password visibility">
             <i class="fa-regular fa-eye-slash" aria-hidden="true"></i>
           </button>
@@ -480,20 +540,20 @@
           <input class="form-check-input" type="checkbox" id="ux_keep">
           <label class="form-check-label" for="ux_keep">Keep me logged in</label>
         </div>
-
         <a class="text-decoration-none" href="{{ $LOGIN_URL }}">
           Already have account? Login
         </a>
       </div>
 
-      <button class="ux-login" id="ux_btn" type="submit">
-        <span class="me-2"><i class="fa-solid fa-user-plus"></i></span> Create Account
+      <!-- Submit — disabled until OTP verified -->
+      <button class="ux-login" id="ux_btn" type="submit" disabled>
+        <span class="me-2"><i class="fa-solid fa-mobile-screen-button"></i></span> Verify phone to continue
       </button>
     </form>
   </section>
 
-  <!-- RIGHT -->
-  <aside class="ux-right" id="ux_visual">
+  <!-- RIGHT — completely unchanged -->
+  <aside class="ux-right d-none" id="ux_visual">
     <span class="ux-arc" aria-hidden="true"></span>
     <span class="ux-ring" aria-hidden="true"></span>
 
@@ -524,372 +584,332 @@
 
 <script>
 (function(){
-  // ✅ CONFIG
   const REGISTER_API   = @json($REGISTER_API);
+  const SEND_OTP_API   = @json($SEND_OTP_API);
+  const VERIFY_OTP_API = @json($VERIFY_OTP_API);
   const LOGIN_URL      = @json($LOGIN_URL);
   const REDIRECT_AFTER = @json($REDIRECT_AFTER);
 
-  // ✅ Campaign API candidates
-  function campaignApiCandidates(uid){
-    return [
-      `/api/interview-registration-campaigns/public/${encodeURIComponent(uid)}`,
-      `/api/interview-registration-campaigns/${encodeURIComponent(uid)}`
-    ];
-  }
-
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
-  // DOM
-  const form    = document.getElementById('ux_form');
-  const btn     = document.getElementById('ux_btn');
-  const alertEl = document.getElementById('ux_alert');
+  const state = {
+    otpSent: false,
+    phoneVerified: false,
+    verificationToken: '',
+    verifiedPhone: ''
+  };
 
-  const nameIn  = document.getElementById('ux_name');
-  const email   = document.getElementById('ux_email');
-  const phone   = document.getElementById('ux_phone');
-  const pw1     = document.getElementById('ux_pw');
-  const pw2     = document.getElementById('ux_pw2');
-  const keepCb  = document.getElementById('ux_keep');
+  const form       = document.getElementById('ux_form');
+  const btn        = document.getElementById('ux_btn');
+  const alertEl    = document.getElementById('ux_alert');
 
-  const t1      = document.getElementById('ux_togglePw');
-  const t2      = document.getElementById('ux_togglePw2');
+  const nameIn     = document.getElementById('ux_name');
+  const phoneIn    = document.getElementById('ux_phone');
+  const otpIn      = document.getElementById('ux_otp');
+  const pw1        = document.getElementById('ux_pw');
+  const pw2        = document.getElementById('ux_pw2');
+  const keepCb     = document.getElementById('ux_keep');
 
-  const folderHidden   = document.getElementById('ux_folder_id');
-  const campaignHidden = document.getElementById('ux_campaign_uid');
-  const titleEl        = document.getElementById('ux_campaignTitle');
-  const subEl          = document.getElementById('ux_campaignSub');
+  const otpBlock   = document.getElementById('ux_otpBlock');
+  const sendOtpBtn = document.getElementById('ux_sendOtpBtn');
+  const verifyBtn  = document.getElementById('ux_verifyOtpBtn');
 
-  // UI helpers
-  function setBusy(b){
-    btn.disabled = b;
-    btn.innerHTML = b
-      ? '<i class="fa-solid fa-spinner fa-spin me-2"></i>Creating account…'
-      : '<span class="me-2"><i class="fa-solid fa-user-plus"></i></span> Create Account';
-  }
+  const phoneVerifiedHidden = document.getElementById('ux_phone_verified');
+  const verificationTokenEl = document.getElementById('ux_verification_token');
+  const phoneVerifiedMsg    = document.getElementById('ux_phoneVerifiedMsg');
+
+  const t1 = document.getElementById('ux_togglePw');
+  const t2 = document.getElementById('ux_togglePw2');
+
+  const CREATE_BTN_HTML = '<span class="me-2"><i class="fa-solid fa-user-plus"></i></span> Create Account';
+  const VERIFY_BTN_HTML = '<span class="me-2"><i class="fa-solid fa-mobile-screen-button"></i></span> Verify phone to continue';
+
+  function normalizePhone(v){ return String(v || '').replace(/\D/g, ''); }
+  function normalizeOtp(v){ return String(v || '').replace(/\D/g, '').slice(0, 6); }
+  function validPhone(v){ const d = normalizePhone(v); return d.length >= 10 && d.length <= 15; }
+  function validOtp(v){ const d = normalizeOtp(v); return d.length >= 4 && d.length <= 6; }
 
   function showAlert(kind, msg){
     alertEl.classList.remove('d-none','alert-danger','alert-success','alert-warning');
     alertEl.classList.add('alert', kind === 'error' ? 'alert-danger' : (kind === 'warn' ? 'alert-warning' : 'alert-success'));
     alertEl.textContent = msg;
   }
-
-  function clearAlert(){
-    alertEl.classList.add('d-none');
-    alertEl.textContent = '';
-  }
+  function clearAlert(){ alertEl.classList.add('d-none'); alertEl.textContent = ''; }
 
   function clearFieldErrors(){
-    document.querySelectorAll('.ux-field-err').forEach(el => {
-      el.classList.remove('show');
-      el.textContent = '';
-    });
+    document.querySelectorAll('.ux-field-err').forEach(el => { el.classList.remove('show'); el.textContent = ''; });
   }
-
   function setFieldError(key, msg){
     const el = document.getElementById('err_' + key);
-    if(el){
-      el.textContent = msg || 'Invalid value';
-      el.classList.add('show');
-    }
+    if(el){ el.textContent = msg || 'Invalid value'; el.classList.add('show'); }
   }
 
-  // ✅ Get campaign UID from URL
-  function getCampaignUid(){
-    // supports:
-    // /register/{uid}
-    // /register?uid={uid}
-    const u = new URL(window.location.href);
-
-    const qp =
-      u.searchParams.get('uid') ||
-      u.searchParams.get('campaign') ||
-      u.searchParams.get('c') ||
-      u.searchParams.get('id');
-
-    if (qp && String(qp).trim()) return String(qp).trim();
-
-    const parts = (u.pathname || '').split('/').filter(Boolean);
-    return parts.length ? parts[parts.length - 1] : '';
-  }
-
-  // ✅ Load campaign details by UID
-  async function loadCampaign(){
-    const uid = getCampaignUid();
-
-    // ✅ REQUIRED: If uid missing -> redirect to login
-    if (!uid){
-      window.location.assign(LOGIN_URL);
-      return;
-    }
-
-    campaignHidden.value = uid;
-
-    // temporary UI
-    titleEl.textContent = 'Loading campaign…';
-    subEl.textContent = 'Please wait…';
-
-    let lastErr = null;
-
-    for (const apiUrl of campaignApiCandidates(uid)){
-      try{
-        const res = await fetch(apiUrl, {
-          headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-          }
-        });
-
-        const j = await res.json().catch(()=> ({}));
-        if (!res.ok) throw new Error(j?.message || 'Failed to load campaign');
-
-        const row = j?.data || j?.campaign || j;
-
-        const campTitle = row?.title || 'Student Registration';
-        const folderId  = row?.user_folder_id ?? row?.folder_id ?? '';
-
-        titleEl.textContent = campTitle;
-        subEl.textContent = 'Create your student account to proceed.';
-
-        if (!folderId){
-          folderHidden.value = '';
-          setFieldError('user_folder_id', 'Campaign folder not configured. Contact admin.');
-          showAlert('error', 'Campaign is missing folder configuration.');
-          btn.disabled = true;
-          return;
-        }
-
-        folderHidden.value = String(folderId);
-        return; // ✅ success
-
-      }catch(e){
-        lastErr = e;
-      }
-    }
-
-    console.warn('Campaign API failed:', lastErr);
-    titleEl.textContent = 'Student Registration';
-    subEl.textContent = 'Campaign not found or expired.';
-    folderHidden.value = '';
-    showAlert('error', lastErr?.message || 'Campaign not found.');
-    btn.disabled = true;
-  }
-
-  // ✅ Storage helpers
-  const authStore = {
-    set(token, role, keep){
-      sessionStorage.setItem('token', token);
-      sessionStorage.setItem('role', role);
-
-      if(keep){
-        localStorage.setItem('token', token);
-        localStorage.setItem('role', role);
-      } else {
-        localStorage.removeItem('token');
-        localStorage.removeItem('role');
-      }
-    }
-  };
-
-  // password toggles
-  function togglePw(input, btn){
+  function togglePw(input, btnEl){
     const show = input.type === 'password';
     input.type = show ? 'text' : 'password';
-    btn.innerHTML = show
+    btnEl.innerHTML = show
       ? '<i class="fa-regular fa-eye" aria-hidden="true"></i>'
       : '<i class="fa-regular fa-eye-slash" aria-hidden="true"></i>';
   }
+
+  function setSubmitBusy(b){
+    btn.disabled = b || !state.phoneVerified;
+    btn.innerHTML = b
+      ? '<i class="fa-solid fa-spinner fa-spin me-2"></i>Creating account...'
+      : (state.phoneVerified ? CREATE_BTN_HTML : VERIFY_BTN_HTML);
+  }
+
+  function setSendOtpBusy(b){
+    sendOtpBtn.disabled = b;
+    sendOtpBtn.innerHTML = b
+      ? '<i class="fa-solid fa-spinner fa-spin"></i>'
+      : (state.otpSent ? 'Resend' : 'OTP');
+  }
+
+  function setVerifyOtpBusy(b){
+    verifyBtn.disabled = b;
+    verifyBtn.innerHTML = b ? '<i class="fa-solid fa-spinner fa-spin"></i>' : 'Verify';
+  }
+
+  function unlockPasswordSection(){
+    state.phoneVerified = true;
+    phoneVerifiedHidden.value = '1';
+    phoneVerifiedMsg.classList.add('show');
+
+    // Enable password fields
+    pw1.disabled = false;
+    pw2.disabled = false;
+
+    // Enable submit button and update label
+    btn.disabled = false;
+    btn.innerHTML = CREATE_BTN_HTML;
+  }
+
+  function resetVerificationState(hideOtpBlock = true){
+    state.phoneVerified = false;
+    state.verificationToken = '';
+    state.verifiedPhone = '';
+
+    phoneVerifiedHidden.value = '0';
+    verificationTokenEl.value = '';
+
+    phoneVerifiedMsg.classList.remove('show');
+
+    // Disable password fields again
+    pw1.disabled = true;
+    pw2.disabled = true;
+    pw1.value = '';
+    pw2.value = '';
+
+    if(hideOtpBlock){
+      state.otpSent = false;
+      otpBlock.classList.add('d-none');
+      otpIn.value = '';
+      sendOtpBtn.innerHTML = 'OTP';
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = VERIFY_BTN_HTML;
+  }
+
+  function authStoreSet(token, role, keep){
+    sessionStorage.setItem('token', token);
+    sessionStorage.setItem('role', role);
+    if(keep){ localStorage.setItem('token', token); localStorage.setItem('role', role); }
+    else { localStorage.removeItem('token'); localStorage.removeItem('role'); }
+  }
+
   t1?.addEventListener('click', () => togglePw(pw1, t1));
   t2?.addEventListener('click', () => togglePw(pw2, t2));
 
-  // submit
-  form?.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  phoneIn?.addEventListener('input', function(){
+    this.value = normalizePhone(this.value);
+    if(state.phoneVerified && normalizePhone(this.value) !== state.verifiedPhone){
+      clearAlert();
+      resetVerificationState(false);
+      showAlert('warn', 'Phone number changed. Please verify again.');
+    }
+  });
+
+  otpIn?.addEventListener('input', function(){ this.value = normalizeOtp(this.value); });
+
+  sendOtpBtn?.addEventListener('click', async function(){
     clearAlert();
     clearFieldErrors();
 
-    const folderId = (folderHidden.value || '').trim();
+    const phone = normalizePhone(phoneIn.value);
+    if(!phone){ setFieldError('phone_number', 'Please enter your phone number'); showAlert('warn', 'Please enter your phone number first.'); return; }
+    if(!validPhone(phone)){ setFieldError('phone_number', 'Enter a valid phone number'); showAlert('warn', 'Please enter a valid phone number.'); return; }
+    if(state.phoneVerified && phone === state.verifiedPhone){ showAlert('success', 'This phone number is already verified.'); return; }
 
-    const payload = {
-      user_folder_id: folderId,
-      name: (nameIn.value || '').trim(),
-      email: (email.value || '').trim(),
-      phone_number: (phone.value || '').trim(),
-      password: pw1.value || '',
-      password_confirmation: pw2.value || ''
-    };
-
-    if(!payload.user_folder_id){
-      setFieldError('user_folder_id', 'Folder missing in campaign. Contact admin.');
-      showAlert('warn','Invalid campaign configuration.');
-      return;
-    }
-    if(!payload.name || payload.name.length < 2){
-      setFieldError('name', 'Please enter your full name');
-      showAlert('warn','Please fix the errors below.');
-      return;
-    }
-    if(!payload.email){
-      setFieldError('email', 'Please enter your email');
-      showAlert('warn','Please fix the errors below.');
-      return;
-    }
-    if(!payload.phone_number){
-      setFieldError('phone_number', 'Please enter your phone number');
-      showAlert('warn','Please fix the errors below.');
-      return;
-    }
-    if(!payload.password || payload.password.length < 8){
-      setFieldError('password', 'Password must be at least 8 characters');
-      showAlert('warn','Please fix the errors below.');
-      return;
-    }
-    if(payload.password !== payload.password_confirmation){
-      setFieldError('password_confirmation', 'Passwords do not match');
-      showAlert('warn','Please fix the errors below.');
-      return;
-    }
-
-    setBusy(true);
+    setSendOtpBusy(true);
     try{
-      const res = await fetch(REGISTER_API, {
+      const res = await fetch(SEND_OTP_API, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': csrf
-        },
-        body: JSON.stringify(payload)
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ phone_number: phone })
       });
-
       const data = await res.json().catch(() => ({}));
 
       if(res.status === 422){
         const errors = data?.errors || {};
-        Object.keys(errors).forEach((k) => {
-          const msg = Array.isArray(errors[k]) ? errors[k][0] : errors[k];
-          setFieldError(k, msg);
-        });
-        showAlert('warn', data?.message || 'Please fix the highlighted fields.');
-        setBusy(false);
+        Object.keys(errors).forEach((k) => { const msg = Array.isArray(errors[k]) ? errors[k][0] : errors[k]; setFieldError(k, msg); });
+        showAlert('warn', data?.message || 'Please check the phone number.');
         return;
       }
+      if(!res.ok){ showAlert('error', data?.message || data?.error || 'Failed to send OTP.'); return; }
 
-      if(!res.ok){
-        const msg =
-          data?.message || data?.error ||
-          (data?.errors ? Object.values(data.errors).flat().join(', ') : 'Registration failed.');
-        showAlert('error', msg);
-        setBusy(false);
-        return;
-      }
+      state.otpSent = true;
+      state.phoneVerified = false;
+      state.verificationToken = data?.verification_token || data?.token || data?.session_id || '';
+      verificationTokenEl.value = state.verificationToken || '';
 
-      const token = data?.access_token || data?.token || '';
-      const role  = (data?.user?.role || 'student').toString().toLowerCase();
-
-      if(!token){
-        showAlert('error', 'No token received from server.');
-        setBusy(false);
-        return;
-      }
-
-      authStore.set(token, role, !!keepCb.checked);
-      showAlert('success', 'Registered successfully. Redirecting…');
-
-      setTimeout(() => {
-        window.location.assign(REDIRECT_AFTER);
-      }, 650);
-
-    } catch(err){
-      showAlert('error','Network error. Please try again.');
-    } finally {
-      setBusy(false);
+      otpBlock.classList.remove('d-none');
+      otpIn.value = '';
+      otpIn.focus();
+      showAlert('success', data?.message || 'OTP sent successfully.');
+    }catch(err){
+      showAlert('error', 'Network error while sending OTP.');
+    }finally{
+      setSendOtpBusy(false);
     }
   });
 
-  // ✅ Load campaign on page load
-  loadCampaign();
+  verifyBtn?.addEventListener('click', async function(){
+    clearAlert();
+    clearFieldErrors();
 
-  // same parallax as login (desktop only)
+    const phone = normalizePhone(phoneIn.value);
+    const otp   = normalizeOtp(otpIn.value);
+
+    if(!state.otpSent){ showAlert('warn', 'Please send OTP first.'); return; }
+    if(!validPhone(phone)){ setFieldError('phone_number', 'Enter a valid phone number'); showAlert('warn', 'Please enter a valid phone number.'); return; }
+    if(!otp){ setFieldError('otp', 'Please enter the OTP'); showAlert('warn', 'Please enter the OTP.'); return; }
+    if(!validOtp(otp)){ setFieldError('otp', 'Enter a valid OTP'); showAlert('warn', 'Please enter a valid OTP.'); return; }
+
+    setVerifyOtpBusy(true);
+    try{
+      const res = await fetch(VERIFY_OTP_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ phone_number: phone, otp: otp, verification_token: verificationTokenEl.value || state.verificationToken || '' })
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if(res.status === 422){
+        const errors = data?.errors || {};
+        Object.keys(errors).forEach((k) => { const msg = Array.isArray(errors[k]) ? errors[k][0] : errors[k]; setFieldError(k, msg); });
+        showAlert('warn', data?.message || 'Please check the OTP.');
+        return;
+      }
+      if(!res.ok){ showAlert('error', data?.message || data?.error || 'OTP verification failed.'); return; }
+
+      state.verifiedPhone = phone;
+      state.verificationToken = data?.verification_token || verificationTokenEl.value || state.verificationToken || '';
+      verificationTokenEl.value = state.verificationToken || '';
+
+      phoneIn.disabled = true;
+      otpIn.disabled = true;
+      sendOtpBtn.disabled = true;
+      verifyBtn.disabled = true;
+
+      unlockPasswordSection();
+      showAlert('success', data?.message || 'Phone verified successfully.');
+    }catch(err){
+      showAlert('error', 'Network error while verifying OTP.');
+    }finally{
+      setVerifyOtpBusy(false);
+    }
+  });
+
+  form?.addEventListener('submit', async function(e){
+    e.preventDefault();
+    clearAlert();
+    clearFieldErrors();
+
+    const payload = {
+  name:                  (nameIn.value || '').trim(),
+  phone_number:          normalizePhone(phoneIn.value),
+  password:              pw1.value || '',
+  password_confirmation: pw2.value || '',
+};
+    if(!payload.name || payload.name.length < 2){ setFieldError('name', 'Please enter your full name'); showAlert('warn', 'Please fix the errors below.'); return; }
+    if(!payload.phone_number){ setFieldError('phone_number', 'Please enter your phone number'); showAlert('warn', 'Please fix the errors below.'); return; }
+    if(!state.phoneVerified){ setFieldError('otp', 'Please verify your OTP first'); showAlert('warn', 'Please verify your phone number first.'); return; }
+    if(!payload.password || payload.password.length < 8){ setFieldError('password', 'Password must be at least 8 characters'); showAlert('warn', 'Please fix the errors below.'); return; }
+    if(payload.password !== payload.password_confirmation){ setFieldError('password_confirmation', 'Passwords do not match'); showAlert('warn', 'Please fix the errors below.'); return; }
+
+    setSubmitBusy(true);
+    try{
+      const res = await fetch(REGISTER_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if(res.status === 422){
+        const errors = data?.errors || {};
+        Object.keys(errors).forEach((k) => { const msg = Array.isArray(errors[k]) ? errors[k][0] : errors[k]; setFieldError(k, msg); });
+        showAlert('warn', data?.message || 'Please fix the highlighted fields.');
+        setSubmitBusy(false); return;
+      }
+      if(!res.ok){
+        showAlert('error', data?.message || data?.error || (data?.errors ? Object.values(data.errors).flat().join(', ') : 'Registration failed.'));
+        setSubmitBusy(false); return;
+      }
+
+      // const token = data?.access_token || data?.token || '';
+      // const role  = (data?.user?.role || 'student').toString().toLowerCase();
+
+      // if(!token){ showAlert('error', 'No token received from server.'); setSubmitBusy(false); return; }
+
+      // authStoreSet(token, role, !!keepCb.checked);
+      // showAlert('success', 'Registered successfully. Redirecting...');
+      // setTimeout(() => window.location.assign(REDIRECT_AFTER), 650);
+    showAlert('success', 'Registered successfully! Redirecting to login...');
+setTimeout(() => window.location.assign(LOGIN_URL), 1500);
+    }catch(err){
+      showAlert('error', 'Network error. Please try again.');
+    }finally{
+      setSubmitBusy(false);
+    }
+  });
+
+  // Parallax — unchanged
   (function(){
-    const stage  = document.getElementById('ux_visual');
-    const hero   = document.getElementById('ux_hero');
-    const frame  = document.querySelector('.ux-hero-frame');
-    const img    = document.querySelector('.ux-hero-img img');
-    if (!stage || !frame || !img || !hero) return;
+    const stage = document.getElementById('ux_visual');
+    const hero  = document.getElementById('ux_hero');
+    const frame = document.querySelector('.ux-hero-frame');
+    const img   = document.querySelector('.ux-hero-img img');
+    if(!stage || !frame || !img || !hero) return;
 
     const mq = window.matchMedia('(max-width: 992px)');
-    let targetTX = 0, targetTY = 0, targetRX = 0, targetRY = 0;
-    let currTX = 0, currTY = 0, currRX = 0, currRY = 0;
-    let rafId = null;
-
-    const MAX_T = 18, MAX_RX = 6, MAX_RY = 8, LERP = 0.12;
+    let targetTX=0,targetTY=0,targetRX=0,targetRY=0,currTX=0,currTY=0,currRX=0,currRY=0,rafId=null;
+    const MAX_T=18,MAX_RX=6,MAX_RY=8,LERP=0.12;
 
     function onMove(e){
-      const rect = stage.getBoundingClientRect();
-      const cx = rect.left + rect.width/2;
-      const cy = rect.top  + rect.height/2;
-      const dx = (e.clientX - cx) / (rect.width/2);
-      const dy = (e.clientY - cy) / (rect.height/2);
-      const ndx = Math.max(-1, Math.min(1, dx));
-      const ndy = Math.max(-1, Math.min(1, dy));
-
-      targetTX = ndx * MAX_T;
-      targetTY = ndy * MAX_T;
-      targetRY = ndx * MAX_RY;
-      targetRX = -ndy * MAX_RX;
-
-      if (!hero.classList.contains('is-tracking')){
-        hero.classList.add('is-tracking');
-        tick();
-      }
+      const rect=stage.getBoundingClientRect();
+      const ndx=Math.max(-1,Math.min(1,(e.clientX-rect.left-rect.width/2)/(rect.width/2)));
+      const ndy=Math.max(-1,Math.min(1,(e.clientY-rect.top-rect.height/2)/(rect.height/2)));
+      targetTX=ndx*MAX_T; targetTY=ndy*MAX_T; targetRY=ndx*MAX_RY; targetRX=-ndy*MAX_RX;
+      if(!hero.classList.contains('is-tracking')){ hero.classList.add('is-tracking'); tick(); }
     }
-    function onLeave(){ targetTX = targetTY = targetRX = targetRY = 0; }
-
+    function onLeave(){ targetTX=targetTY=targetRX=targetRY=0; }
     function tick(){
-      currTX += (targetTX - currTX) * LERP;
-      currTY += (targetTY - currTY) * LERP;
-      currRX += (targetRX - currRX) * LERP;
-      currRY += (targetRY - currRY) * LERP;
-
-      frame.style.transform =
-        `translate3d(${currTX.toFixed(2)}px, ${currTY.toFixed(2)}px, 0)
-         rotateX(${currRX.toFixed(2)}deg)
-         rotateY(${currRY.toFixed(2)}deg)`;
-
-      const ix = (-currTX * 0.6).toFixed(2);
-      const iy = (-currTY * 0.6).toFixed(2);
-      img.style.transform = `translate3d(${ix}px, ${iy}px, 0) scale(1.05)`;
-
-      const nearZero =
-        Math.abs(currTX) < 0.15 && Math.abs(currTY) < 0.15 &&
-        Math.abs(currRX) < 0.08 && Math.abs(currRY) < 0.08 &&
-        Math.abs(targetTX) < 0.15 && Math.abs(targetTY) < 0.15 &&
-        Math.abs(targetRX) < 0.08 && Math.abs(targetRY) < 0.08;
-
-      if (!nearZero){
-        rafId = requestAnimationFrame(tick);
-      } else {
-        frame.style.transform = 'translate3d(0,0,0) rotateX(0) rotateY(0)';
-        img.style.transform = 'translate3d(0,0,0) scale(1)';
-        hero.classList.remove('is-tracking');
-        rafId && cancelAnimationFrame(rafId);
-        rafId = null;
-      }
+      currTX+=(targetTX-currTX)*LERP; currTY+=(targetTY-currTY)*LERP;
+      currRX+=(targetRX-currRX)*LERP; currRY+=(targetRY-currRY)*LERP;
+      frame.style.transform=`translate3d(${currTX.toFixed(2)}px,${currTY.toFixed(2)}px,0) rotateX(${currRX.toFixed(2)}deg) rotateY(${currRY.toFixed(2)}deg)`;
+      img.style.transform=`translate3d(${(-currTX*.6).toFixed(2)}px,${(-currTY*.6).toFixed(2)}px,0) scale(1.05)`;
+      const near=Math.abs(currTX)<.15&&Math.abs(currTY)<.15&&Math.abs(currRX)<.08&&Math.abs(currRY)<.08&&Math.abs(targetTX)<.15&&Math.abs(targetTY)<.15&&Math.abs(targetRX)<.08&&Math.abs(targetRY)<.08;
+      if(!near){ rafId=requestAnimationFrame(tick); }
+      else{ frame.style.transform='translate3d(0,0,0) rotateX(0) rotateY(0)'; img.style.transform='translate3d(0,0,0) scale(1)'; hero.classList.remove('is-tracking'); if(rafId)cancelAnimationFrame(rafId); rafId=null; }
     }
-
-    function attach(){
-      if (mq.matches) return;
-      stage.addEventListener('mousemove', onMove);
-      stage.addEventListener('mouseleave', onLeave);
-    }
-    function detach(){
-      stage.removeEventListener('mousemove', onMove);
-      stage.removeEventListener('mouseleave', onLeave);
-      onLeave();
-    }
-
+    function attach(){ if(mq.matches)return; stage.addEventListener('mousemove',onMove); stage.addEventListener('mouseleave',onLeave); }
+    function detach(){ stage.removeEventListener('mousemove',onMove); stage.removeEventListener('mouseleave',onLeave); onLeave(); }
     attach();
-    mq.addEventListener('change', () => { detach(); attach(); });
-    window.addEventListener('blur', onLeave);
+    mq.addEventListener('change',()=>{ detach(); attach(); });
+    window.addEventListener('blur',onLeave);
   })();
 })();
 </script>

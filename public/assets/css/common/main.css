@@ -10,13 +10,13 @@
 
 /* ---- Tokens ---- */
 :root{
-  /* Brand (picked from logo) */
-  --primary-color:   #1f9790;   /* Logo teal */
-  --secondary-color: #17716c;   /* Deeper support teal */
-  --accent-color:    #14b8a6;   /* Bright aqua accent */
+  /* Brand (picked from MSIT branding) */
+  --primary-color:   #9E363A;   /* Deep wine red */
+  --secondary-color: #6B2528;   /* Darker shade for contrast */
+  --accent-color:    #C94B50;   /* Warm accent red */
 
   /* Light variants / helpers */
-  --primary-light:   #b8e4df;
+  --primary-light:   #f4d6d8;
   --danger-light:    #fecaca;
 
   /* Neutrals */
@@ -46,7 +46,7 @@
   --radius-0: 0px;
   --radius-1: 10px;
   --transition: all .18s ease;
-  --ring: 0 0 0 .18rem rgba(20,184,166,.28);
+  --ring: 0 0 0 .18rem rgba(201,75,80,.28);
 
   /* Type */
   --font-sans: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Noto Sans', sans-serif;
@@ -71,8 +71,10 @@
   --t-danger:  rgba(220,38,38,.12);
   --t-info:    rgba(99,102,241,.12);
   --t-warn:    rgba(245,158,11,.14);
-  --t-primary: rgba(20,184,166,.14);
+  --t-primary: rgba(201,75,80,.14);
 }
+
+
 
 /* =========================================================
    Base & Utilities

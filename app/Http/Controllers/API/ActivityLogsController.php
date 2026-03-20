@@ -22,103 +22,283 @@ class ActivityLogsController extends Controller
      * - actor  -> matches performed_by exactly; also tries performed_by_name LIKE
      * - from,to (YYYY-MM-DD) on created_at|occurred_at|when
      */
-    public function index(Request $r)
-    {
-        try {
-            $table = 'user_data_activity_log';
+public function index(Request $r)
+{
+    try {
+        $table = 'user_data_activity_log';
 
-            // pagination + basics
-            $page  = max((int)$r->query('page', 1), 1);
-            $limit = min(max((int)$r->query('limit', 50), 1), 500);
-            $sort  = strtolower((string)$r->query('sort', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $page  = max((int) $r->query('page', 1), 1);
+        $limit = min(max((int) $r->query('limit', 50), 1), 500);
+        $sort  = strtolower((string) $r->query('sort', 'desc')) === 'asc' ? 'asc' : 'desc';
 
-            // filters
-            $q        = trim((string)$r->query('q', ''));
-            $module   = trim((string)$r->query('module', ''));
-            $activity = trim((string)$r->query('activity', ''));
-            $actor    = trim((string)$r->query('actor', '')); // performed_by (id or string)
-            $from     = trim((string)$r->query('from', ''));  // YYYY-MM-DD
-            $to       = trim((string)$r->query('to', ''));    // YYYY-MM-DD
+        $q         = trim((string) $r->query('q', ''));
+        $module    = trim((string) $r->query('module', ''));
+        $activity  = trim((string) $r->query('activity', ''));
+        $actor     = trim((string) $r->query('actor', ''));
+        $from      = trim((string) $r->query('from', ''));
+        $to        = trim((string) $r->query('to', ''));
 
-            $builder = DB::table($table);
-            $columns = $this->getTableColumns($table);
+        $studentId = trim((string) (
+            $r->query('student_id') ?? $r->query('user_id') ?? ''
+        ));
 
-            // ----- exact filters -----
-            if ($module !== '' && in_array('module', $columns, true)) {
-                $builder->where('module', $module);
+        $columns = $this->getTableColumns($table);
+        $builder = DB::table($table);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Student/User filter
+        |--------------------------------------------------------------------------
+        | Support both schemas:
+        | 1) CRUD logs      -> performed_by / target / record_id
+        | 2) Auth logs      -> target_id / target_type / performed_by
+        */
+        if ($studentId !== '') {
+            if (!is_numeric($studentId)) {
+                return response()->json([
+                    'ok'    => false,
+                    'error' => 'student_id / user_id must be numeric'
+                ], 422);
             }
-            if ($activity !== '' && in_array('activity', $columns, true)) {
-                $builder->where('activity', $activity);
-            }
-            if ($actor !== '') {
-                $builder->where(function ($w) use ($actor, $columns) {
-                    if (in_array('performed_by', $columns, true)) {
-                        $w->orWhere('performed_by', $actor);
+
+            $studentIdInt = (int) $studentId;
+
+            $builder->where(function ($w) use ($columns, $studentIdInt) {
+                $hasAny = false;
+
+                if (in_array('performed_by', $columns, true)) {
+                    $w->orWhere('performed_by', $studentIdInt);
+                    $hasAny = true;
+                }
+
+                if (in_array('target_id', $columns, true)) {
+                    if (in_array('target_type', $columns, true)) {
+                        $w->orWhere(function ($x) use ($studentIdInt) {
+                            $x->where('target_id', $studentIdInt)
+                              ->whereIn('target_type', ['user', 'student']);
+                        });
+                    } else {
+                        $w->orWhere('target_id', $studentIdInt);
                     }
-                    if (in_array('performed_by_name', $columns, true)) {
-                        $w->orWhere('performed_by_name', 'like', "%{$actor}%");
+                    $hasAny = true;
+                }
+
+                if (in_array('target', $columns, true)) {
+                    $w->orWhere('target', (string) $studentIdInt);
+                    $w->orWhere('target', $studentIdInt);
+                    $hasAny = true;
+                }
+
+                if (in_array('record_id', $columns, true)) {
+                    $w->orWhere('record_id', (string) $studentIdInt);
+                    $w->orWhere('record_id', $studentIdInt);
+                    $hasAny = true;
+                }
+
+                if (!$hasAny) {
+                    $w->whereRaw('1 = 0');
+                }
+            });
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Exact filters
+        |--------------------------------------------------------------------------
+        */
+        if ($module !== '' && in_array('module', $columns, true)) {
+            $builder->where('module', $module);
+        }
+
+        if ($activity !== '' && in_array('activity', $columns, true)) {
+            $builder->where('activity', $activity);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Actor search
+        |--------------------------------------------------------------------------
+        */
+        if ($actor !== '' && $studentId === '') {
+            $builder->where(function ($w) use ($actor, $columns) {
+                if (in_array('performed_by', $columns, true) && is_numeric($actor)) {
+                    $w->orWhere('performed_by', (int) $actor);
+                }
+                if (in_array('performed_by_name', $columns, true)) {
+                    $w->orWhere('performed_by_name', 'like', "%{$actor}%");
+                }
+            });
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Date column detection
+        |--------------------------------------------------------------------------
+        */
+        $dateCol = in_array('created_at', $columns, true)
+            ? 'created_at'
+            : (in_array('occurred_at', $columns, true)
+                ? 'occurred_at'
+                : (in_array('when', $columns, true) ? 'when' : null));
+
+        if ($dateCol) {
+            if ($from !== '') {
+                $builder->where($dateCol, '>=', "{$from} 00:00:00");
+            }
+            if ($to !== '') {
+                $builder->where($dateCol, '<=', "{$to} 23:59:59");
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Free text search
+        |--------------------------------------------------------------------------
+        */
+        if ($q !== '') {
+            $searchable = array_values(array_intersect($columns, [
+                'module',
+                'activity',
+                'performed_by',
+                'performed_by_name',
+                'title',
+                'log_note',
+                'details',
+                'description',
+                'message',
+                'properties',
+                'record_table',
+                'record_id',
+                'target',
+                'target_id',
+                'target_type',
+                'ip',
+                'ip_address',
+                'user_agent',
+            ]));
+
+            if (!empty($searchable)) {
+                $builder->where(function ($w) use ($searchable, $q) {
+                    foreach ($searchable as $col) {
+                        $w->orWhere($col, 'like', "%{$q}%");
                     }
                 });
             }
+        }
 
-            // ----- date range (created_at | occurred_at | when) -----
-            $dateCol = in_array('created_at', $columns, true)
-                ? 'created_at'
-                : (in_array('occurred_at', $columns, true) ? 'occurred_at'
-                : (in_array('when', $columns, true) ? 'when' : null));
+        /*
+        |--------------------------------------------------------------------------
+        | Order
+        |--------------------------------------------------------------------------
+        */
+        $orderCol = $dateCol
+            ?: (in_array('id', $columns, true) ? 'id' : ($columns[0] ?? null));
 
-            if ($dateCol) {
-                if ($from !== '') $builder->where($dateCol, '>=', "{$from} 00:00:00");
-                if ($to   !== '') $builder->where($dateCol, '<=', "{$to} 23:59:59");
-            }
+        if ($orderCol) {
+            $builder->orderBy($orderCol, $sort);
+        }
 
-            // ----- free-text search -----
-            if ($q !== '') {
-                $searchable = array_values(array_intersect(
-                    $columns,
-                    [
-                        'module', 'activity',
-                        'performed_by', 'performed_by_name',
-                        'log_note', 'details', 'description', 'message',
-                        'record_table', 'record_id', 'target',
-                        'ip', 'user_agent'
-                    ]
-                ));
-                if (!empty($searchable)) {
-                    $builder->where(function ($w) use ($searchable, $q) {
-                        foreach ($searchable as $col) {
-                            $w->orWhere($col, 'like', "%{$q}%");
-                        }
-                    });
+        $total = (clone $builder)->count();
+        $rows  = $builder->forPage($page, $limit)->get();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Student info
+        |--------------------------------------------------------------------------
+        */
+        $student = null;
+        if ($studentId !== '') {
+            $student = DB::table('users')
+                ->where('id', (int) $studentId)
+                ->whereNull('deleted_at')
+                ->select(['id', 'name', 'email'])
+                ->first();
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Normalize output for frontend
+        |--------------------------------------------------------------------------
+        */
+        $data = $rows->map(function ($row) use ($columns, $dateCol) {
+            $properties = null;
+
+            if (in_array('properties', $columns, true) && !empty($row->properties)) {
+                try {
+                    $properties = json_decode($row->properties, true);
+                } catch (\Throwable $e) {
+                    $properties = null;
                 }
             }
 
-            // ----- order -----
-            $orderCol = $dateCol ?: (in_array('id', $columns, true) ? 'id' : ($columns[0] ?? null));
-            if ($orderCol) $builder->orderBy($orderCol, $sort);
+            return [
+                'id'                => $row->id ?? null,
+                'module'            => $row->module ?? null,
+                'activity'          => $row->activity ?? null,
+                'performed_by'      => $row->performed_by ?? null,
+                'performed_by_name' => $row->performed_by_name ?? null,
 
-            // ----- count + page -----
-            $total = (clone $builder)->count();
-            $rows  = $builder->forPage($page, $limit)->get();
+                // unified title/note/message
+                'title'             => $row->title ?? null,
+                'log_note'          => $row->log_note ?? null,
+                'description'       => $row->description
+                                        ?? $row->message
+                                        ?? $row->log_note
+                                        ?? $row->title
+                                        ?? null,
+                'message'           => $row->message ?? null,
+                'details'           => $row->details ?? null,
+                'properties'        => $properties,
 
-            return response()->json([
-                'ok'    => true,
-                'data'  => $rows,
-                'page'  => $page,
-                'limit' => $limit,
-                'total' => $total,
-            ]);
-        } catch (Throwable $e) {
-            Log::error('ActivityLogsController@index failed', [
-                'error' => $e->getMessage(),
-            ]);
-            return response()->json([
-                'ok' => false,
-                'error' => 'Failed to fetch activity logs.',
-            ], 500);
-        }
+                // unified target
+                'target'            => $row->target
+                                        ?? $row->target_id
+                                        ?? $row->record_id
+                                        ?? null,
+                'target_id'         => $row->target_id ?? null,
+                'target_type'       => $row->target_type ?? null,
+                'record_table'      => $row->record_table ?? null,
+                'record_id'         => $row->record_id ?? null,
+
+                // unified IP
+                'ip'                => $row->ip ?? $row->ip_address ?? null,
+                'ip_address'        => $row->ip_address ?? $row->ip ?? null,
+                'user_agent'        => $row->user_agent ?? null,
+
+                // unified time
+                'created_at'        => $row->created_at
+                                        ?? $row->occurred_at
+                                        ?? $row->when
+                                        ?? null,
+                'occurred_at'       => $row->occurred_at ?? null,
+                'updated_at'        => $row->updated_at ?? null,
+            ];
+        })->values();
+
+        return response()->json([
+            'ok'         => true,
+            'data'       => $data,
+            'page'       => $page,
+            'limit'      => $limit,
+            'total'      => $total,
+            'student_id' => $studentId !== '' ? (int) $studentId : null,
+            'student'    => $student ? [
+                'id'    => (int) $student->id,
+                'name'  => (string) $student->name,
+                'email' => (string) $student->email,
+            ] : null,
+        ]);
+    } catch (Throwable $e) {
+        Log::error('ActivityLogsController@index failed', [
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'ok'    => false,
+            'error' => 'Failed to fetch activity logs.'
+        ], 500);
     }
-
+}
     /**
      * POST /api/activity-logs
      * Store an activity row (including deletes).

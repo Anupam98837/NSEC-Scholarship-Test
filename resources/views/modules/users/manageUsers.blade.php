@@ -502,55 +502,49 @@ html.theme-dark .badge-code{
 
         <div class="row g-3">
           {{-- LEFT: User Filters + List --}}
-         {{-- LEFT: User Filters + List --}}
-<div class="col-lg-6">
-  <div class="ba-box">
-    <div class="fw-semibold mb-2"><i class="fa fa-users me-1"></i>Select Users</div>
+          <div class="col-lg-6">
+            <div class="ba-box">
+              <div class="fw-semibold mb-2"><i class="fa fa-users me-1"></i>Select Users</div>
 
-    <div class="row g-2">
-      <div class="col-md-6">
-        <label class="form-label small text-muted mb-1">Folder</label>
-        <select id="baUserFolder" class="form-select">
-          <option value="">All Folders</option>
-        </select>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label small text-muted mb-1">Role (Admin excluded)</label>
-        <select id="baUserRole" class="form-select">
-          <option value="">All</option>
-          <option value="examiner">Examiner</option>
-          <option value="student">Student</option>
-        </select>
-      </div>
-      <div class="col-12">
-        <label class="form-label small text-muted mb-1">Search</label>
-        <div class="position-relative">
-          <input id="baUserSearch" class="form-control ps-5" placeholder="Search users by name/email...">
-          <i class="fa fa-search position-absolute" style="left:12px;top:50%;transform:translateY(-50%);opacity:.65;"></i>
-        </div>
-      </div>
-    </div>
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label small text-muted mb-1">Folder</label>
+                  <select id="baUserFolder" class="form-select">
+                    <option value="">All Folders</option>
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small text-muted mb-1">Role (Admin excluded)</label>
+                  <select id="baUserRole" class="form-select">
+                    <option value="">All</option>
+                    <option value="examiner">Examiner</option>
+                    <option value="student">Student</option>
+                    <option value="author">Author</option>
+                    <option value="academic_counsellor">Academic Counsellor</option>
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label class="form-label small text-muted mb-1">Search</label>
+                  <div class="position-relative">
+                    <input id="baUserSearch" class="form-control ps-5" placeholder="Search users by name/email...">
+                    <i class="fa fa-search position-absolute" style="left:12px;top:50%;transform:translateY(-50%);opacity:.65;"></i>
+                  </div>
+                </div>
+              </div>
 
-    {{-- ✅ Only show after users loaded --}}
-    <div id="baUserControls" class="d-none">
-      <div class="d-flex align-items-center justify-content-between mt-3">
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" id="baUserSelectAll">
-          <label class="form-check-label" for="baUserSelectAll">Select all (visible)</label>
-        </div>
-        <div class="small text-muted" id="baUserCount">Selected: 0</div>
-      </div>
-    </div>
+              <div class="d-flex align-items-center justify-content-between mt-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="baUserSelectAll">
+                  <label class="form-check-label" for="baUserSelectAll">Select all (visible)</label>
+                </div>
+                <div class="small text-muted" id="baUserCount">Selected: 0</div>
+              </div>
 
-    <div class="ba-list mt-3" id="baUserList">
-      {{-- ✅ Initial empty state --}}
-      <div class="p-3 text-muted text-center" id="baUserEmptyState">
-        <i class="fa fa-filter mb-2" style="font-size:20px;"></i>
-        <div>Select filters above to load users</div>
-      </div>
-    </div>
-  </div>
-</div>
+              <div class="ba-list mt-3" id="baUserList">
+                <div class="p-3 text-muted">Loading...</div>
+              </div>
+            </div>
+          </div>
 
           {{-- RIGHT: Tabs content --}}
           <div class="col-lg-6">
@@ -726,7 +720,10 @@ html.theme-dark .badge-code{
               <option value="admin">Admin</option>
               <option value="examiner">Examiner</option>
               <option value="student">Student</option>
-            </select>
+              <option value="author">Author</option>
+              <option value="college_administrator">College Administrator</option>
+              <option value="academic_counsellor">Academic Counsellor</option>
+                        </select>
           </div>
         {{-- Folder --}}
         <div class="col-12">
@@ -909,6 +906,9 @@ html.theme-dark .badge-code{
               <option value="admin">Admin</option>
               <option value="examiner">Examiner</option>
               <option value="student">Student</option>
+              <option value="author">Author</option>
+<option value="college_administrator">College Administrator</option>
+<option value="academic_counsellor">Academic Counsellor</option>
             </select>
           </div>
           <div class="col-md-4">
@@ -948,27 +948,6 @@ html.theme-dark .badge-code{
             </div>
           </div>
 
-
-{{-- Password fields for EDIT mode (optional) --}}
-<div class="col-md-6 js-pw-edit d-none">
-  <label class="form-label">New Password <span class="text-muted">(optional)</span></label>
-  <div class="u-pw-wrap">
-    <input type="password" class="form-control pe-5" id="userPasswordEdit" placeholder="••••••••">
-    <button type="button" class="u-eye js-eye-toggle" data-target="userPasswordEdit" aria-label="Toggle password visibility">
-      <i class="fa-regular fa-eye-slash"></i>
-    </button>
-  </div>
-  <div class="form-text">Leave blank to keep current password</div>
-</div>
-<div class="col-md-6 js-pw-edit d-none">
-  <label class="form-label">Confirm New Password</label>
-  <div class="u-pw-wrap">
-    <input type="password" class="form-control pe-5" id="userPasswordConfirmationEdit" placeholder="••••••••">
-    <button type="button" class="u-eye js-eye-toggle" data-target="userPasswordConfirmationEdit" aria-label="Toggle confirm password visibility">
-      <i class="fa-regular fa-eye-slash"></i>
-    </button>
-  </div>
-</div>
           {{-- Optional profile/contact fields --}}
           <div class="col-md-6">
             <label class="form-label">Alt. Email</label>
@@ -1342,8 +1321,29 @@ document.addEventListener('DOMContentLoaded', function(){
       .then(()=> location.href = '/');
     return;
   }
-  const ROLE = (sessionStorage.getItem('role') || localStorage.getItem('role') || '').toLowerCase();
-  const CAN_WRITE  = (ROLE === 'admin' || ROLE === 'super_admin');
+function normalizeRoleToken(v){
+  let r = String(v || '').trim().toLowerCase();
+  if (!r) return '';
+
+  r = r.replace(/[\s-]+/g, '_'); // spaces/hyphens -> underscore
+
+  // handle common aliases
+  const map = {
+    superadmin: 'super_admin',
+    'super_admin': 'super_admin',
+    collegeadministrator: 'college_administrator',
+    academiccounsellor: 'academic_counsellor',
+    academiccounselor: 'academic_counsellor',
+  };
+
+  // also remove underscores only for matching map keys
+  const key2 = r.replace(/_/g,'');
+  return map[r] || map[key2] || r;
+}
+
+const ROLE_RAW = sessionStorage.getItem('role') || localStorage.getItem('role') || '';
+const ROLE = normalizeRoleToken(ROLE_RAW);
+const CAN_WRITE = (ROLE === 'admin' || ROLE === 'super_admin' || ROLE === 'college_administrator');
   const CAN_DELETE = (ROLE === 'super_admin');
 
   // Seeded system admin – never shown/managed from UI
@@ -1505,14 +1505,6 @@ const upg_filter           = document.getElementById('upg_filter');
 
   const baPathSelect = document.getElementById('baPathSelect');
 const baApplyPath  = document.getElementById('baApplyPath');
-//password edit
-// const userPasswordInput  = document.getElementById('userPassword');
-// const userPassword2Input = document.getElementById('userPasswordConfirmation');
-const userPasswordEditInput  = document.getElementById('userPasswordEdit');
-const userPassword2EditInput = document.getElementById('userPasswordConfirmationEdit');
-
-const pwCreateSections = document.querySelectorAll('.js-pw-section');
-const pwEditSections   = document.querySelectorAll('.js-pw-edit');
 
 let bulkPathCatalog = [];
 
@@ -1619,39 +1611,41 @@ filterModalEl.addEventListener('hidden.bs.modal', cleanupModalBackdrops);
     visibleUsers = list;
     return list;
   }
-function renderUserList(){
-  const list = filterUsersForList();
 
-  if (!list.length){
-    baUserList.innerHTML = `<div class="p-3 text-muted">No users found with selected filters.</div>`;
-    baUserCount.textContent = `Selected: 0`;
-    return;
-  }
+  function renderUserList(){
+    const list = filterUsersForList();
 
-  baUserList.innerHTML = list.map(u=>{
-    const uid = String(u.id);
-    const checked = selectedUserIds.has(uid);
-    const folderNm = folderNameFromUserRow(u) || '—';
+    if (!list.length){
+      baUserList.innerHTML = `<div class="p-3 text-muted">No users found.</div>`;
+      baUserCount.textContent = `Selected: 0`;
+      return;
+    }
 
-    return `
-      <div class="ba-item">
-        <div class="ba-left">
-          <input class="form-check-input ba-user-chk" type="checkbox" data-id="${esc(uid)}" ${checked?'checked':''}>
-          <div class="ba-meta">
-            <div class="ba-name">${esc(u.name || '')}</div>
-            <div class="ba-email">${esc(u.email || '')}</div>
+    baUserList.innerHTML = list.map(u=>{
+      const uid = String(u.id);
+      const checked = selectedUserIds.has(uid);
+      const folderNm = folderNameFromUserRow(u) || '—';
+
+      return `
+        <div class="ba-item">
+          <div class="ba-left">
+            <input class="form-check-input ba-user-chk" type="checkbox" data-id="${esc(uid)}" ${checked?'checked':''}>
+            <div class="ba-meta">
+              <div class="ba-name">${esc(u.name || '')}</div>
+              <div class="ba-email">${esc(u.email || '')}</div>
+            </div>
+          </div>
+          <div class="ba-right">
+            <span class="ba-pill">${esc(roleLabel(u.role))}</span>
+            <span class="ba-pill">${esc(folderNm)}</span>
           </div>
         </div>
-        <div class="ba-right">
-          <span class="ba-pill">${esc(roleLabel(u.role))}</span>
-          <span class="ba-pill">${esc(folderNm)}</span>
-        </div>
-      </div>
-    `;
-  }).join('');
+      `;
+    }).join('');
 
-  baUserCount.textContent = `Selected: ${selectedUserIds.size}`;
-}
+    baUserCount.textContent = `Selected: ${selectedUserIds.size}`;
+  }
+
   function showProgress(title, done, total, hint){
     baProgressWrap.classList.remove('d-none');
     baProgressText.textContent = title || 'Processing...';
@@ -1906,98 +1900,44 @@ function renderUserList(){
 
     baFooterInfo.textContent = 'Done';
   }
-async function openBulkAssign(){
-  if (!CAN_WRITE){
-    err('You do not have permission to bulk assign');
-    return;
-  }
 
-  baLoader.classList.remove('d-none');
-  baProgressWrap.classList.add('d-none');
+  async function openBulkAssign(){
+    if (!CAN_WRITE){
+      err('You do not have permission to bulk assign');
+      return;
+    }
 
-  // ✅ Reset state
-  bulkUsersLoaded = false;
-  bulkUsers = [];
-  bulkById.clear();
-  selectedUserIds.clear();
-  
-  // ✅ Hide user controls initially
-  const baUserControls = document.getElementById('baUserControls');
-  if (baUserControls) baUserControls.classList.add('d-none');
+    baLoader.classList.remove('d-none');
+    baProgressWrap.classList.add('d-none');
 
-  // ensure folders ready
-  await loadFoldersDropdown();
-  fillBulkUserFolderDropdown();
+    // ensure folders ready
+    await loadFoldersDropdown();
+    fillBulkUserFolderDropdown();
 
-  // ✅ Reset filters
-  baUserSelectAll.checked = false;
-  baUserSearch.value = '';
-  baUserFolder.value = '';
-  baUserRole.value = '';
-
-  // ✅ Show initial empty state (don't load users yet)
-  baUserList.innerHTML = `
-    <div class="p-3 text-muted text-center" id="baUserEmptyState">
-      <i class="fa fa-filter mb-2" style="font-size:20px;"></i>
-      <div>Select filters above to load users</div>
-    </div>
-  `;
-
-  // ✅ Load catalogs (quizzes/games) - this is lightweight
-  // We'll load catalogs on first filter change instead
-  baLoader.classList.add('d-none');
-  baFooterInfo.textContent = 'Ready - Select filters to load users';
-}
-async function loadBulkUsersWithFilters(){
-  if (!CAN_WRITE){
-    err('You do not have permission to bulk assign');
-    return;
-  }
-
-  const baUserControls = document.getElementById('baUserControls');
-  
-  // ✅ Show loading state
-  baUserList.innerHTML = `
-    <div class="p-3 text-muted text-center">
-      <i class="fa fa-circle-notch fa-spin mb-2" style="font-size:20px;"></i>
-      <div>Loading users...</div>
-    </div>
-  `;
-
-  try{
-    // ✅ Load all users if not already loaded
     if (!bulkUsersLoaded){
-      bulkUsers = await fetchAllUsersForBulk();
-      bulkById = new Map(bulkUsers.map(u => [String(u.id), u]));
-      bulkUsersLoaded = true;
+      try{
+        bulkUsers = await fetchAllUsersForBulk();
+        bulkById = new Map(bulkUsers.map(u => [String(u.id), u]));
+        bulkUsersLoaded = true;
+      }catch(e){
+        err(e.message || 'Failed to load users');
+      }
     }
 
-    // ✅ Load catalogs if not already loaded
-    if (!bulkCatalogLoaded){
-      await loadCatalogsUsingFirstUser();
-    }
+    // load catalogs using one user’s endpoints
+    await loadCatalogsUsingFirstUser();
 
     selectedUserIds.clear();
     baUserSelectAll.checked = false;
+    baUserSearch.value = '';
+    baUserFolder.value = '';
+    baUserRole.value = '';
 
     renderUserList();
-    
-    // ✅ Show controls
-    if (baUserControls) baUserControls.classList.remove('d-none');
-    
-    const count = filterUsersForList().length;
-    baFooterInfo.textContent = `Loaded ${count} users`;
-
-  }catch(e){
-    err(e.message || 'Failed to load users');
-    baUserList.innerHTML = `
-      <div class="p-3 text-danger text-center">
-        <i class="fa fa-exclamation-triangle me-1"></i>
-        ${esc(e.message || 'Failed to load users')}
-      </div>
-    `;
+    baLoader.classList.add('d-none');
+    baFooterInfo.textContent = 'Ready';
   }
-}
+
   // user list checkboxes
   baUserList?.addEventListener('change', (e)=>{
     const chk = e.target.closest('.ba-user-chk');
@@ -2022,39 +1962,9 @@ async function loadBulkUsersWithFilters(){
   });
 
   // filters
-baUserFolder?.addEventListener('change', async ()=> {
-  // ✅ Always clear selections when filter changes
-  selectedUserIds.clear();
-  baUserSelectAll.checked = false;
-  
-  if (!bulkUsersLoaded) {
-    await loadBulkUsersWithFilters();
-  } else {
-    renderUserList();
-  }
-});
-baUserRole?.addEventListener('change', async ()=> {
-  // ✅ Always clear selections when filter changes
-  selectedUserIds.clear();
-  baUserSelectAll.checked = false;
-  
-  if (!bulkUsersLoaded) {
-    await loadBulkUsersWithFilters();
-  } else {
-    renderUserList();
-  }
-});
-baUserSearch?.addEventListener('input', debounce(async ()=> {
-  // ✅ Search doesn't auto-clear selections (user might be refining)
-  // But uncheck "select all" since visible list changed
-  baUserSelectAll.checked = false;
-  
-  if (!bulkUsersLoaded) {
-    await loadBulkUsersWithFilters();
-  } else {
-    renderUserList();
-  }
-}, 250));
+  baUserFolder?.addEventListener('change', ()=>{ renderUserList(); });
+  baUserRole?.addEventListener('change', ()=>{ renderUserList(); });
+  baUserSearch?.addEventListener('input', debounce(renderUserList, 250));
 
   // apply buttons
   baApplyQuiz?.addEventListener('click', ()=> applyBulk('quiz'));
@@ -2068,18 +1978,12 @@ baUserSearch?.addEventListener('input', debounce(async ()=> {
   }
 
   // reset progress on close
-  // reset progress on close
-bulkAssignModalEl?.addEventListener('hidden.bs.modal', ()=>{
-  baProgressWrap.classList.add('d-none');
-  baProgressBar.style.width = '0%';
-  baFooterInfo.textContent = 'Ready';
-  
-  // ✅ Reset users loaded state
-  bulkUsersLoaded = false;
-  bulkUsers = [];
-  bulkById.clear();
-  selectedUserIds.clear();
-});
+  bulkAssignModalEl?.addEventListener('hidden.bs.modal', ()=>{
+    baProgressWrap.classList.add('d-none');
+    baProgressBar.style.width = '0%';
+    baFooterInfo.textContent = 'Ready';
+  });
+
   /* =================== UTILS =================== */
   function esc(s){
     const m = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
@@ -2105,7 +2009,10 @@ bulkAssignModalEl?.addEventListener('hidden.bs.modal', ()=>{
     super_admin: 'Super Admin',
     admin:       'Admin',
     examiner:    'Examiner',
-    student:     'Student'
+    student:     'Student',
+    author:                 'Author',
+  college_administrator:  'College Administrator',
+  academic_counsellor:    'Academic Counsellor'
   };
   function roleLabel(v){
     const k = (v || '').toLowerCase();
@@ -2654,30 +2561,8 @@ let upg_data   = [];
         </button>
       </li>
       <li>
-        <button type="button" class="dropdown-item" data-action="upload_cv">
-          <i class="fa fa-file-arrow-up"></i> Upload CV
-        </button>
-      </li>
-      <li>
         <button type="button" class="dropdown-item" data-action="quizzes">
           <i class="fa fa-question-circle"></i> Manage Quizzes
-        </button>
-      </li>
-      <li>
-        <button type="button" class="dropdown-item" data-action="bubble">
-          <i class="fa fa-gamepad"></i> Manage Bubble Games
-        </button>
-      </li>
-      <li>
-        <button type="button" class="dropdown-item" data-action="door">
-          <i class="fa fa-door-open"></i> Manage Door Games
-        </button>
-      </li>
-
-      <!-- ✅ ADD HERE -->
-      <li>
-        <button type="button" class="dropdown-item" data-action="path">
-          <i class="fa fa-route"></i> Manage Path Games
         </button>
       </li>
   `;
@@ -2831,77 +2716,71 @@ document.addEventListener('click', (e) => {
 
   /* =================== ADD / EDIT USER =================== */
   function resetUserForm(){
-  userIdInput.value   = '';
-  userNameInput.value = '';
-  userEmailInput.value= '';
-  userPhoneInput.value= '';
-  userRoleInput.value = '';
-  userStatusInput.value='active';
-  userPasswordInput.value = '';
-  userPassword2Input.value= '';
-  userPasswordEditInput.value = '';
-  userPassword2EditInput.value = '';
-  userAltEmailInput.value = '';
-  userAltPhoneInput.value = '';
-  userWhatsAppInput.value = '';
-  userAddressInput.value  = '';
-  userImageInput.value    = '';
-  imagePreview.style.display = 'none';
-  imagePreview.src = '';
-  
-  // Show create password fields, hide edit password fields
-  pwCreateSections.forEach(el => el.classList.remove('d-none'));
-  pwEditSections.forEach(el => el.classList.add('d-none'));
-  
-  if (userFolderInput) userFolderInput.value = '';
-}
+    userIdInput.value   = '';
+    userNameInput.value = '';
+    userEmailInput.value= '';
+    userPhoneInput.value= '';
+    userRoleInput.value = '';
+    userStatusInput.value='active';
+    userPasswordInput.value = '';
+    userPassword2Input.value= '';
+    userAltEmailInput.value = '';
+    userAltPhoneInput.value = '';
+    userWhatsAppInput.value = '';
+    userAddressInput.value  = '';
+    userImageInput.value    = '';
+    imagePreview.style.display = 'none';
+    imagePreview.src = '';
+    pwSections.forEach(el => el.classList.remove('d-none'));
+    if (userFolderInput) userFolderInput.value = '';
+  }
+
   function openCreateUser(){
     resetUserForm();
     userModalTitle.textContent = 'Add User';
     userForm.dataset.mode = 'create';
     userModal.show();
   }
-async function openEditUser(id){
-  resetUserForm();
-  userModalTitle.textContent = 'Edit User';
-  userForm.dataset.mode = 'edit';
-  
-  // Hide create password fields, show edit password fields
-  pwCreateSections.forEach(el => el.classList.add('d-none'));
-  pwEditSections.forEach(el => el.classList.remove('d-none'));
 
-  try{
-    const res = await fetch(`/api/users/${id}`, {
-      headers: authHeaders({'Accept':'application/json'})
-    });
-    const j = await res.json().catch(()=> ({}));
-    if (!res.ok) throw new Error(j.message || 'Failed to load user');
+  async function openEditUser(id){
+    resetUserForm();
+    userModalTitle.textContent = 'Edit User';
+    userForm.dataset.mode = 'edit';
+    pwSections.forEach(el => el.classList.add('d-none'));
 
-    const u = j.user || {};
-    userIdInput.value    = u.id || '';
-    userNameInput.value  = u.name || '';
-    userEmailInput.value = u.email || '';
-    userPhoneInput.value = u.phone_number || '';
-    userRoleInput.value  = u.role || '';
-    userStatusInput.value= u.status || 'active';
-    userAltEmailInput.value = u.alternative_email || '';
-    userAltPhoneInput.value = u.alternative_phone_number || '';
-    userWhatsAppInput.value = u.whatsapp_number || '';
-    userAddressInput.value  = u.address || '';
+    try{
+      const res = await fetch(`/api/users/${id}`, {
+        headers: authHeaders({'Accept':'application/json'})
+      });
+      const j = await res.json().catch(()=> ({}));
+      if (!res.ok) throw new Error(j.message || 'Failed to load user');
 
-    const selectedFolder = u.user_folder_id ?? u.folder_id ?? '';
-    if (userFolderInput) userFolderInput.value = selectedFolder ? String(selectedFolder) : '';
+      const u = j.user || {};
+      userIdInput.value    = u.id || '';
+      userNameInput.value  = u.name || '';
+      userEmailInput.value = u.email || '';
+      userPhoneInput.value = u.phone_number || '';
+      userRoleInput.value  = u.role || '';
+      userStatusInput.value= u.status || 'active';
+      userAltEmailInput.value = u.alternative_email || '';
+      userAltPhoneInput.value = u.alternative_phone_number || '';
+      userWhatsAppInput.value = u.whatsapp_number || '';
+      userAddressInput.value  = u.address || '';
 
-    const imgUrl = fixImageUrl(u.image);
-    if (imgUrl){
-      imagePreview.src = imgUrl;
-      imagePreview.style.display = 'block';
+      const selectedFolder = u.user_folder_id ?? u.folder_id ?? '';
+      if (userFolderInput) userFolderInput.value = selectedFolder ? String(selectedFolder) : '';
+
+      const imgUrl = fixImageUrl(u.image);
+      if (imgUrl){
+        imagePreview.src = imgUrl;
+        imagePreview.style.display = 'block';
+      }
+      userModal.show();
+    }catch(e){
+      err(e.message || 'Failed to open editor');
     }
-    userModal.show();
-  }catch(e){
-    err(e.message || 'Failed to open editor');
   }
-}
+
   userImageInput.addEventListener('change', function(){
     const f = userImageInput.files && userImageInput.files[0];
     if (!f){
@@ -2928,154 +2807,116 @@ async function openEditUser(id){
       }
     });
   });
-userForm.addEventListener('submit', async function(e){
-  e.preventDefault();
-  if (!CAN_WRITE){
-    err('You do not have permission to modify users');
-    return;
-  }
 
-  const mode = userForm.dataset.mode || 'create';
-
-  const name  = userNameInput.value.trim();
-  const email = userEmailInput.value.trim();
-  const role  = userRoleInput.value;
-  const status= userStatusInput.value || 'active';
-
-  if (!name){
-    Swal.fire('Name required','Please enter full name.','info');
-    return;
-  }
-  if (!email){
-    Swal.fire('Email required','Please enter email.','info');
-    return;
-  }
-  if (!role){
-    Swal.fire('Role required','Please select role.','info');
-    return;
-  }
-
-  // Password validation
-  let passwordToUpdate = null;
-  
-  if (mode === 'create'){
-    const pw  = userPasswordInput.value;
-    const pw2 = userPassword2Input.value;
-    if (!pw || pw.length < 8){
-      Swal.fire('Password too short','Password must be at least 8 characters.','info');
+  userForm.addEventListener('submit', async function(e){
+    e.preventDefault();
+    if (!CAN_WRITE){
+      err('You do not have permission to modify users');
       return;
     }
-    if (pw !== pw2){
-      Swal.fire('Password mismatch','Password and confirm password must match.','info');
+
+    const mode = userForm.dataset.mode || 'create';
+
+    const name  = userNameInput.value.trim();
+    const email = userEmailInput.value.trim();
+    const role  = userRoleInput.value;
+    const status= userStatusInput.value || 'active';
+
+    if (!name){
+      Swal.fire('Name required','Please enter full name.','info');
       return;
     }
-  } else if (mode === 'edit'){
-    // Edit mode: password is optional
-    const pwEdit  = userPasswordEditInput.value;
-    const pw2Edit = userPassword2EditInput.value;
-    
-    if (pwEdit || pw2Edit) {
-      // If either field has value, validate both
-      if (pwEdit.length < 8){
-        Swal.fire('Password too short','New password must be at least 8 characters.','info');
+    if (!email){
+      Swal.fire('Email required','Please enter email.','info');
+      return;
+    }
+    if (!role){
+      Swal.fire('Role required','Please select role.','info');
+      return;
+    }
+
+    if (mode === 'create'){
+      const pw  = userPasswordInput.value;
+      const pw2 = userPassword2Input.value;
+      if (!pw || pw.length < 8){
+        Swal.fire('Password too short','Password must be at least 8 characters.','info');
         return;
       }
-      if (pwEdit !== pw2Edit){
-        Swal.fire('Password mismatch','New password and confirm password must match.','info');
-        return;
-      }
-      passwordToUpdate = pwEdit;
-    }
-  }
-
-  const fd = new FormData();
-  fd.append('name', name);
-  fd.append('email', email);
-  fd.append('role', role);
-  fd.append('status', status);
-
-  if (userFolderInput){
-    fd.append('user_folder_id', userFolderInput.value || '');
-  }
-
-  if (userPhoneInput.value.trim()){
-    fd.append('phone_number', userPhoneInput.value.trim());
-  }
-  if (userAltEmailInput.value.trim()){
-    fd.append('alternative_email', userAltEmailInput.value.trim());
-  }
-  if (userAltPhoneInput.value.trim()){
-    fd.append('alternative_phone_number', userAltPhoneInput.value.trim());
-  }
-  if (userWhatsAppInput.value.trim()){
-    fd.append('whatsapp_number', userWhatsAppInput.value.trim());
-  }
-  if (userAddressInput.value.trim()){
-    fd.append('address', userAddressInput.value.trim());
-  }
-  if (mode === 'create'){
-    fd.append('password', userPasswordInput.value);
-  }
-  if (userImageInput.files && userImageInput.files[0]){
-    fd.append('image', userImageInput.files[0]);
-  }
-
-  let url  = '/api/users';
-  let method = 'POST';
-  if (mode === 'edit'){
-    const id = userIdInput.value;
-    if (!id){
-      err('Missing user id');
-      return;
-    }
-    url = `/api/users/${id}`;
-    fd.append('_method','PATCH');
-    method = 'POST';
-  }
-
-  saveUserBtn.disabled = true;
-  const oldHtml = saveUserBtn.innerHTML;
-  saveUserBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span>Saving…`;
-
-  try{
-    const res = await fetch(url, {
-      method,
-      headers: authHeaders({'Accept':'application/json'}),
-      body: fd
-    });
-    const j = await res.json().catch(()=> ({}));
-    if (!res.ok) throw new Error(firstError(j) || 'Save failed');
-
-    // ✅ UPDATE PASSWORD SEPARATELY IF CHANGED (EDIT MODE ONLY)
-    if (mode === 'edit' && passwordToUpdate) {
-      const userId = userIdInput.value;
-      try {
-        const pwRes = await fetch(`/api/users/${userId}/password`, {
-          method: 'PATCH',
-          headers: authHeaders({'Content-Type':'application/json','Accept':'application/json'}),
-          body: JSON.stringify({ password: passwordToUpdate })
-        });
-        const pwJson = await pwRes.json().catch(()=> ({}));
-        if (!pwRes.ok) throw new Error(firstError(pwJson) || 'Password update failed');
-      } catch (pwErr) {
-        // User updated but password failed
-        err('User updated, but password update failed: ' + pwErr.message);
-        userModal.hide();
-        loadUsers().catch(ex => err(ex.message || 'Reload failed'));
+      if (pw !== pw2){
+        Swal.fire('Password mismatch','Password and confirm password must match.','info');
         return;
       }
     }
 
-    ok(mode === 'create' ? 'User created' : 'User updated');
-    userModal.hide();
-    loadUsers().catch(ex => err(ex.message || 'Reload failed'));
-  }catch(e){
-    err(e.message || 'Save failed');
-  }finally{
-    saveUserBtn.disabled = false;
-    saveUserBtn.innerHTML = oldHtml;
-  }
-});
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('email', email);
+    fd.append('role', role);
+    fd.append('status', status);
+
+    // ✅ FIX: append folder only ONCE (allows remove when blank)
+    if (userFolderInput){
+      fd.append('user_folder_id', userFolderInput.value || '');
+    }
+
+    if (userPhoneInput.value.trim()){
+      fd.append('phone_number', userPhoneInput.value.trim());
+    }
+    if (userAltEmailInput.value.trim()){
+      fd.append('alternative_email', userAltEmailInput.value.trim());
+    }
+    if (userAltPhoneInput.value.trim()){
+      fd.append('alternative_phone_number', userAltPhoneInput.value.trim());
+    }
+    if (userWhatsAppInput.value.trim()){
+      fd.append('whatsapp_number', userWhatsAppInput.value.trim());
+    }
+    if (userAddressInput.value.trim()){
+      fd.append('address', userAddressInput.value.trim());
+    }
+    if (mode === 'create'){
+      fd.append('password', userPasswordInput.value);
+    }
+    if (userImageInput.files && userImageInput.files[0]){
+      fd.append('image', userImageInput.files[0]);
+    }
+
+    let url  = '/api/users';
+    let method = 'POST';
+    if (mode === 'edit'){
+      const id = userIdInput.value;
+      if (!id){
+        err('Missing user id');
+        return;
+      }
+      url = `/api/users/${id}`;
+      fd.append('_method','PATCH');
+      method = 'POST';
+    }
+
+    saveUserBtn.disabled = true;
+    const oldHtml = saveUserBtn.innerHTML;
+    saveUserBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span>Saving…`;
+
+    try{
+      const res = await fetch(url, {
+        method,
+        headers: authHeaders({'Accept':'application/json'}),
+        body: fd
+      });
+      const j = await res.json().catch(()=> ({}));
+      if (!res.ok) throw new Error(firstError(j) || 'Save failed');
+
+      ok(mode === 'create' ? 'User created' : 'User updated');
+      userModal.hide();
+      loadUsers().catch(ex => err(ex.message || 'Reload failed'));
+    }catch(e){
+      err(e.message || 'Save failed');
+    }finally{
+      saveUserBtn.disabled = false;
+      saveUserBtn.innerHTML = oldHtml;
+    }
+  });
 
   if (CAN_WRITE && btnAddUser){
     btnAddUser.addEventListener('click', openCreateUser);
@@ -3994,6 +3835,8 @@ uploadCvForm.addEventListener('submit', async function(e){
     cvUploadBtn.innerHTML = old;
   }
 });
+
+
   /* =================== INITIAL LOAD =================== */
   loadFoldersDropdown().finally(() => {
     loadUsers().catch(ex => err(ex.message || 'Failed to load users'));

@@ -11,12 +11,12 @@
             </div>
 
             <div class="w3-loader-logo-ring">
-                <img src="{{ asset('/assets/media/images/web/logo.png') }}" alt="W3Techiez" class="w3-loader-logo">
+                <img src="{{ asset('/assets/media/images/web/logo2.jpg') }}" alt="NSEC" class="w3-loader-logo">
             </div>
         </div>
 
         <div class="w3-loader-text">
-            <h2>Unzip Exam</h2>
+          <h2>{{ config('app.name') }}</h2>
             <p>Loading your workspace…</p>
         </div>
 

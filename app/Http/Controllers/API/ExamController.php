@@ -85,7 +85,60 @@ class ExamController extends Controller
 
         return $user;
     }
+/* ============================================
+ | Activity Log helpers
+ |============================================ */
+private function logActivity(
+    string  $module,
+    string  $activity,
+    string  $note,
+    Request $request,
+    ?object $user        = null,
+    ?object $attempt     = null,
+    ?array  $details     = null,
+    ?string $recordTable = null,
+    mixed   $recordId    = null,
+    mixed   $target      = null,
+): void {
+    try {
+        $now = now()->toDateTimeString();
 
+        $payload = [
+            'performed_by'      => $user ? (int) $user->id          : 0,
+            'performed_by_role' => $user ? ($user->role ?? null)     : null,
+            'activity'          => $activity,
+            'module'            => $module,
+            'table_name'        => $recordTable ?? ($attempt ? 'quizz_attempts' : null),
+            'record_id'         => $recordId    ?? ($attempt ? $attempt->id     : null),
+            'log_note'          => $note ?: null,
+            'new_values'        => $details
+                                    ? json_encode($details, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                                    : null,
+            'old_values'        => null,
+            'changed_fields'    => $details
+                                    ? json_encode(array_keys($details))
+                                    : null,
+            'ip'                => $request->ip(),
+            'user_agent'        => substr((string) $request->userAgent(), 0, 500),
+            'created_at'        => $now,
+            'updated_at'        => $now,
+        ];
+
+        // Remove keys whose value is null so we don't hit NOT NULL column errors
+        // BUT keep keys that have actual values including 0
+        $payload = array_filter($payload, fn($v) => $v !== null);
+
+        DB::table('user_data_activity_log')->insert($payload);
+
+    } catch (\Throwable $e) {
+        Log::warning('[logActivity] failed', [
+            'error'    => $e->getMessage(),
+            'module'   => $module,
+            'activity' => $activity,
+            'note'     => $note,
+        ]);
+    }
+}
     private function isStudent(object $user): bool
     {
         $role = mb_strtolower(preg_replace('/[^a-z0-9]+/i', '', (string)($user->role ?? '')));
@@ -394,189 +447,153 @@ class ExamController extends Controller
     }
 
     /* ============================================
- | GET /api/exam/attempts/{attempt}/questions
- |============================================ */
-public function questions(Request $request, string $attemptUuid)
-{
-    $user = $this->getUserFromToken($request);
-    if (!$user) return response()->json(['success'=>false,'message'=>'Unauthorized'], 401);
+     | GET /api/exam/attempts/{attempt}/questions
+     |============================================ */
+    public function questions(Request $request, string $attemptUuid)
+    {
+        $user = $this->getUserFromToken($request);
+        if (!$user) return response()->json(['success'=>false,'message'=>'Unauthorized'], 401);
 
-    $attempt = DB::table('quizz_attempts')->where('uuid', $attemptUuid)->first();
-    if (!$attempt || (int)$attempt->user_id !== (int)$user->id) {
-        return response()->json(['success'=>false,'message'=>'Attempt not found'], 404);
-    }
-
-    if ($this->deadlinePassed($attempt)) {
-        $attempt = $this->autoFinalize($attempt, true);
-    }
-
-    $rows = DB::table('quizz_questions as q')
-        ->leftJoin('quizz_question_answers as a', 'a.belongs_question_id', '=', 'q.id')
-        ->where('q.quiz_id', $attempt->quiz_id)
-        ->orderBy('q.question_order')
-        ->orderBy('a.answer_order')
-        ->select([
-            'q.id as question_id',
-            'q.question_title',
-            'q.question_description',
-            'q.answer_explanation',
-            'q.question_type',
-            'q.question_mark',
-            'q.group_title',
-            'q.question_order',
-            DB::raw("(
-                SELECT COUNT(*) FROM quizz_question_answers
-                WHERE belongs_question_id = q.id AND is_correct = 1
-            ) as correct_count"),
-
-            'a.id as answer_id',
-            'a.answer_title',
-            'a.answer_order',
-        ])
-        ->get();
-
-    $questionsById = [];
-    foreach ($rows as $r) {
-        $qid = (int)$r->question_id;
-
-        if (!isset($questionsById[$qid])) {
-            $questionsById[$qid] = [
-                'question_id'                 => $qid,
-                'question_title'              => $r->question_title,
-                'question_description'        => $r->question_description,
-                'question_type'               => $r->question_type,
-                'question_mark'               => (int)$r->question_mark,
-                'question_order'              => (int)$r->question_order,
-                'group_title'                 => $r->group_title,
-                'has_multiple_correct_answer' => ((int)$r->correct_count > 1),
-                'answers'                     => [],
-            ];
+        $attempt = DB::table('quizz_attempts')->where('uuid', $attemptUuid)->first();
+        if (!$attempt || (int)$attempt->user_id !== (int)$user->id) {
+            return response()->json(['success'=>false,'message'=>'Attempt not found'], 404);
         }
 
-        if ($r->answer_id !== null) {
-            $questionsById[$qid]['answers'][] = [
-                'answer_id'    => (int)$r->answer_id,
-                'answer_title' => $r->answer_title,
-                'answer_order' => (int)($r->answer_order ?? 0),
-            ];
+        if ($this->deadlinePassed($attempt)) {
+            $attempt = $this->autoFinalize($attempt, true);
         }
-    }
 
-    $saved = DB::table('quizz_attempt_answers')
-        ->where('attempt_id', $attempt->id)
-        ->pluck('selected_raw', 'question_id');
+        $rows = DB::table('quizz_questions as q')
+            ->leftJoin('quizz_question_answers as a', 'a.belongs_question_id', '=', 'q.id')
+            ->where('q.quiz_id', $attempt->quiz_id)
+            ->orderBy('q.question_order')
+            ->orderBy('a.answer_order')
+            ->select([
+                'q.id as question_id',
+                'q.question_title',
+                'q.question_description',
+                'q.answer_explanation',
+                'q.question_type',
+                'q.question_mark',
+                'q.question_order',
+                DB::raw("(
+                    SELECT COUNT(*) FROM quizz_question_answers
+                    WHERE belongs_question_id = q.id AND is_correct = 1
+                ) as correct_count"),
 
-    $selections = [];
-    foreach ($saved as $qid => $json) {
-        try { $selections[$qid] = json_decode($json, true); }
-        catch (\Throwable $e) { $selections[$qid] = null; }
-    }
+                'a.id as answer_id',
+                'a.answer_title',
+                'a.answer_order',
+            ])
+            ->get();
 
-    $layoutQuestions = null;
-    $layoutOptions   = null;
+        $questionsById = [];
+        foreach ($rows as $r) {
+            $qid = (int)$r->question_id;
 
-    if (!empty($attempt->questions_order)) {
-        try { $layoutQuestions = json_decode($attempt->questions_order, true); }
-        catch (\Throwable $e) { $layoutQuestions = null; }
-    }
-
-    if (!empty($attempt->options_order)) {
-        try { $layoutOptions = json_decode($attempt->options_order, true); }
-        catch (\Throwable $e) { $layoutOptions = null; }
-    }
-
-    $orderedQuestions = [];
-    $hasLayout = is_array($layoutQuestions) && !empty($layoutQuestions);
-
-    if ($hasLayout) {
-        $usedQids = [];
-        foreach ($layoutQuestions as $qid) {
-            $qid = (int)$qid;
-            if (!isset($questionsById[$qid])) continue;
-
-            $qArr = $questionsById[$qid];
-
-            if (is_array($layoutOptions)) {
-                $keyInt = $qid;
-                $keyStr = (string)$qid;
-                $ansOrder = $layoutOptions[$keyInt] ?? ($layoutOptions[$keyStr] ?? null);
-
-                if (is_array($ansOrder) && !empty($qArr['answers'])) {
-                    $answersById = [];
-                    foreach ($qArr['answers'] as $ans) {
-                        $answersById[(int)$ans['answer_id']] = $ans;
-                    }
-
-                    $newAnswers = [];
-                    foreach ($ansOrder as $aid) {
-                        $aid = (int)$aid;
-                        if (isset($answersById[$aid])) {
-                            $newAnswers[] = $answersById[$aid];
-                            unset($answersById[$aid]);
-                        }
-                    }
-
-                    foreach ($answersById as $aRow) $newAnswers[] = $aRow;
-                    $qArr['answers'] = $newAnswers;
-                }
+            if (!isset($questionsById[$qid])) {
+                $questionsById[$qid] = [
+                    'question_id'                 => $qid,
+                    'question_title'              => $r->question_title,
+                    'question_description'        => $r->question_description,
+                    'question_type'               => $r->question_type,
+                    'question_mark'               => (int)$r->question_mark,
+                    'question_order'              => (int)$r->question_order,
+                    'has_multiple_correct_answer' => ((int)$r->correct_count > 1),
+                    'answers'                     => [],
+                ];
             }
 
-            $orderedQuestions[] = $qArr;
-            $usedQids[$qid] = true;
+            if ($r->answer_id !== null) {
+                $questionsById[$qid]['answers'][] = [
+                    'answer_id'    => (int)$r->answer_id,
+                    'answer_title' => $r->answer_title,
+                    'answer_order' => (int)($r->answer_order ?? 0),
+                ];
+            }
         }
 
-        foreach ($questionsById as $qid => $qArr) {
-            if (!isset($usedQids[$qid])) $orderedQuestions[] = $qArr;
+        $saved = DB::table('quizz_attempt_answers')
+            ->where('attempt_id', $attempt->id)
+            ->pluck('selected_raw', 'question_id');
+
+        $selections = [];
+        foreach ($saved as $qid => $json) {
+            try { $selections[$qid] = json_decode($json, true); }
+            catch (\Throwable $e) { $selections[$qid] = null; }
         }
-    } else {
-        $orderedQuestions = array_values($questionsById);
+
+        $layoutQuestions = null;
+        $layoutOptions   = null;
+
+        if (!empty($attempt->questions_order)) {
+            try { $layoutQuestions = json_decode($attempt->questions_order, true); }
+            catch (\Throwable $e) { $layoutQuestions = null; }
+        }
+
+        if (!empty($attempt->options_order)) {
+            try { $layoutOptions = json_decode($attempt->options_order, true); }
+            catch (\Throwable $e) { $layoutOptions = null; }
+        }
+
+        $orderedQuestions = [];
+        $hasLayout = is_array($layoutQuestions) && !empty($layoutQuestions);
+
+        if ($hasLayout) {
+            $usedQids = [];
+            foreach ($layoutQuestions as $qid) {
+                $qid = (int)$qid;
+                if (!isset($questionsById[$qid])) continue;
+
+                $qArr = $questionsById[$qid];
+
+                if (is_array($layoutOptions)) {
+                    $keyInt = $qid;
+                    $keyStr = (string)$qid;
+                    $ansOrder = $layoutOptions[$keyInt] ?? ($layoutOptions[$keyStr] ?? null);
+
+                    if (is_array($ansOrder) && !empty($qArr['answers'])) {
+                        $answersById = [];
+                        foreach ($qArr['answers'] as $ans) {
+                            $answersById[(int)$ans['answer_id']] = $ans;
+                        }
+
+                        $newAnswers = [];
+                        foreach ($ansOrder as $aid) {
+                            $aid = (int)$aid;
+                            if (isset($answersById[$aid])) {
+                                $newAnswers[] = $answersById[$aid];
+                                unset($answersById[$aid]);
+                            }
+                        }
+
+                        foreach ($answersById as $aRow) $newAnswers[] = $aRow;
+                        $qArr['answers'] = $newAnswers;
+                    }
+                }
+
+                $orderedQuestions[] = $qArr;
+                $usedQids[$qid] = true;
+            }
+
+            foreach ($questionsById as $qid => $qArr) {
+                if (!isset($usedQids[$qid])) $orderedQuestions[] = $qArr;
+            }
+        } else {
+            $orderedQuestions = array_values($questionsById);
+        }
+
+        return response()->json([
+            'success'=>true,
+            'attempt'=>[
+                'status'        => $attempt->status,
+                'time_left_sec' => $this->timeLeftSec($attempt),
+                'server_end_at' => (string)$attempt->server_deadline_at,
+            ],
+            'questions'  => $orderedQuestions,
+            'selections' => $selections
+        ], 200);
     }
-
-    /* ==========================================================
-     | ✅ NEW: Group-aware ordering (NO response schema change)
-     | Ensures same group_title questions stay contiguous.
-     | - Group order = first appearance in $orderedQuestions
-     | - Within a group = preserves existing relative order
-     | - Empty/null group_title stays per-question (no forced bunching)
-     |========================================================== */
-    $groupBuckets = [];
-    $groupOrder   = [];
-
-    foreach ($orderedQuestions as $qArr) {
-        $gt = trim((string)($qArr['group_title'] ?? ''));
-
-        // If no group, keep each question as its own "group" so we don't move them around
-        $key = ($gt === '')
-            ? ('__nogroup__:' . (int)$qArr['question_id'])
-            : ('g:' . mb_strtolower($gt, 'UTF-8'));
-
-        if (!isset($groupBuckets[$key])) {
-            $groupBuckets[$key] = [];
-            $groupOrder[] = $key;
-        }
-        $groupBuckets[$key][] = $qArr;
-    }
-
-    $groupedOut = [];
-    foreach ($groupOrder as $k) {
-        foreach ($groupBuckets[$k] as $qArr) {
-            $groupedOut[] = $qArr;
-        }
-    }
-    $orderedQuestions = $groupedOut;
-
-    return response()->json([
-        'success'=>true,
-        'attempt'=>[
-            'status'        => $attempt->status,
-            'time_left_sec' => $this->timeLeftSec($attempt),
-            'server_end_at' => (string)$attempt->server_deadline_at,
-        ],
-        'questions'  => $orderedQuestions,
-        'selections' => $selections
-    ], 200);
-}
-
 
     /* ==========================================================
      | NEW: POST /api/exam/attempts/{attempt}/bulk-answer
@@ -888,147 +905,170 @@ public function questions(Request $request, string $attemptUuid)
         }
     }
 
-    public function submit(Request $request, string $attemptUuid)
-    {
-        $user = $this->getUserFromToken($request);
-        if (!$user) return response()->json(['success'=>false,'message'=>'Unauthorized'], 401);
-
-        $attempt = DB::table('quizz_attempts')->where('uuid', $attemptUuid)->first();
-        if (!$attempt || (int)$attempt->user_id !== (int)$user->id) {
-            return response()->json(['success'=>false,'message'=>'Attempt not found'], 404);
-        }
-
-        if (in_array($attempt->status, ['submitted','auto_submitted'], true)) {
-            $summary = $this->resultSummaryForAttempt($attempt);
-            return response()->json(['success'=>true] + $summary, 200);
-        }
-
-        if ($this->deadlinePassed($attempt)) {
-            $attempt = $this->autoFinalize($attempt, true);
-            $summary = $this->resultSummaryForAttempt($attempt);
-            return response()->json(['success'=>true] + $summary, 200);
-        }
-
-        $now = Carbon::now();
-
-        DB::beginTransaction();
-        try {
-            // OPTIONAL: if frontend posts answers in submit → persist them first
-            if ($request->has('answers') && is_array($request->input('answers'))) {
-                // reuse bulk logic inline (without returning)
-                $payload = $request->input('answers', []);
-                $qIds = array_values(array_unique(array_map(fn($x)=> (int)($x['question_id'] ?? 0), $payload)));
-                $qIds = array_values(array_filter($qIds, fn($x)=> $x > 0));
-
-                $qMap = DB::table('quizz_questions')
-                    ->where('quiz_id', $attempt->quiz_id)
-                    ->whereIn('id', $qIds)
-                    ->get(['id','question_type'])
-                    ->keyBy('id');
-
-                if ($qMap->count() !== count($qIds)) {
-                    DB::rollBack();
-                    return response()->json([
-                        'success'=>false,
-                        'message'=>'One or more questions are invalid for this quiz',
-                    ], 422);
-                }
-
-                foreach ($payload as $row) {
-                    $qid = (int)($row['question_id'] ?? 0);
-                    if ($qid <= 0) continue;
-
-                    $selected  = $row['selected'] ?? null;
-                    $timeSpent = (int)($row['time_spent_sec'] ?? 0);
-                    if ($timeSpent < 0) $timeSpent = 0;
-
-                    $qType = (string)($qMap[$qid]->question_type ?? 'mcq');
-                    $selectedJson = json_encode($selected, JSON_UNESCAPED_UNICODE);
-
-                    $existing = DB::table('quizz_attempt_answers')
-                        ->where('attempt_id', $attempt->id)
-                        ->where('question_id', $qid)
-                        ->lockForUpdate()
-                        ->first();
-
-                    if ($existing) {
-                        DB::table('quizz_attempt_answers')->where('id', $existing->id)->update([
-                            'selected_raw'   => $selectedJson,
-                            'question_type'  => $existing->question_type ?: $qType,
-                            'time_spent_sec' => (int)($existing->time_spent_sec ?? 0) + $timeSpent,
-                            'answered_at'    => $existing->answered_at ?: $now,
-                            'updated_at'     => $now,
-                        ]);
-                    } else {
-                        DB::table('quizz_attempt_answers')->insert([
-                            'attempt_id'     => $attempt->id,
-                            'question_id'    => $qid,
-                            'question_type'  => $qType,
-                            'selected_raw'   => $selectedJson,
-                            'time_spent_sec' => $timeSpent,
-                            'answered_at'    => $now,
-                            'created_at'     => $now,
-                            'updated_at'     => $now,
-                        ]);
-                    }
-                }
-
-                DB::table('quizz_attempts')->where('id', $attempt->id)->update([
-                    'last_activity_at' => $now,
-                    'updated_at'       => $now,
-                ]);
-            }
-
-            // Score & persist result
-            $scored  = $this->scoreAttempt($attempt->id);
-            $this->writeAttemptAnswerDerived($attempt->id, $scored['answers']);
-            $publish = $this->shouldPublishToStudent((int)$attempt->quiz_id);
-
-            $cnt = $scored['counters'];
-            $pct = $scored['total_marks'] ? round($scored['marks_obtained'] / $scored['total_marks'] * 100, 2) : 0;
-
-            $resultId = DB::table('quizz_results')->insertGetId([
-                'uuid'               => (string) Str::uuid(),
-                'attempt_id'         => (int) $attempt->id,
-                'quiz_id'            => (int) $attempt->quiz_id,
-                'user_id'            => (int) $attempt->user_id,
-                'marks_obtained'     => (int) $scored['marks_obtained'],
-                'total_marks'        => (int) $scored['total_marks'],
-                'marks_total'        => (int) $scored['total_marks'],
-                'total_questions'    => (int) $cnt['total_questions'],
-                'total_correct'      => (int) $cnt['total_correct'],
-                'total_incorrect'    => (int) $cnt['total_incorrect'],
-                'total_skipped'      => (int) $cnt['total_skipped'],
-                'percentage'         => $pct,
-                'attempt_number'     => (int) $this->attemptNumberForUser((int)$attempt->quiz_id, (int)$attempt->user_id) + 1,
-                'students_answer'    => json_encode($scored['answers'], JSON_UNESCAPED_UNICODE),
-                'publish_to_student' => $publish ? 1 : 0,
-                'result_set_up_type' => DB::table('quizz')->where('id',$attempt->quiz_id)->value('result_set_up_type') ?? 'Immediately',
-                'result_release_date'=> DB::table('quizz')->where('id',$attempt->quiz_id)->value('result_release_date'),
-                'created_at'         => $now,
-                'updated_at'         => $now,
-            ]);
-
-            DB::table('quizz_attempts')->where('id', $attempt->id)->update([
-                'status'      => 'submitted',
-                'finished_at' => $now,
-                'updated_at'  => $now,
-                'result_id'   => $resultId,
-            ]);
-
-            DB::commit();
-
-            $attempt = DB::table('quizz_attempts')->where('id', $attempt->id)->first();
-            $summary = $this->resultSummaryForAttempt($attempt);
-
-            return response()->json(['success'=>true] + $summary, 201);
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            Log::error('[Exam submit] failed', ['e'=>$e->getMessage()]);
-            return response()->json(['success'=>false,'message'=>'Failed to submit'], 500);
-        }
+   public function submit(Request $request, string $attemptUuid)
+{
+    $user = $this->getUserFromToken($request);
+    if (!$user) {
+        $this->logActivity('quiz', 'default', 'Unauthorized submit attempt', $request);
+        return response()->json(['success'=>false,'message'=>'Unauthorized'], 401);
     }
 
+    $attempt = DB::table('quizz_attempts')->where('uuid', $attemptUuid)->first();
+    if (!$attempt || (int)$attempt->user_id !== (int)$user->id) {
+        $this->logActivity('quiz', 'default', 'Attempt not found or unauthorized', $request, $user);
+        return response()->json(['success'=>false,'message'=>'Attempt not found'], 404);
+    }
+
+    if (in_array($attempt->status, ['submitted','auto_submitted'], true)) {
+        $this->logActivity('quiz', 'default', 'Re-submit on already completed attempt', $request, $user, $attempt, [
+            'status' => $attempt->status,
+        ]);
+        $summary = $this->resultSummaryForAttempt($attempt);
+        return response()->json(['success'=>true] + $summary, 200);
+    }
+
+    if ($this->deadlinePassed($attempt)) {
+        $attempt = $this->autoFinalize($attempt, true);
+        $this->logActivity('quiz', 'default', 'Auto-submitted due to deadline expiry', $request, $user, $attempt);
+        $summary = $this->resultSummaryForAttempt($attempt);
+        return response()->json(['success'=>true] + $summary, 200);
+    }
+
+    $now = Carbon::now();
+
+    DB::beginTransaction();
+    try {
+        if ($request->has('answers') && is_array($request->input('answers'))) {
+            $payload = $request->input('answers', []);
+            $qIds = array_values(array_unique(array_map(fn($x) => (int)($x['question_id'] ?? 0), $payload)));
+            $qIds = array_values(array_filter($qIds, fn($x) => $x > 0));
+
+            $qMap = DB::table('quizz_questions')
+                ->where('quiz_id', $attempt->quiz_id)
+                ->whereIn('id', $qIds)
+                ->get(['id','question_type'])
+                ->keyBy('id');
+
+            if ($qMap->count() !== count($qIds)) {
+                DB::rollBack();
+                $this->logActivity('quiz', 'default', 'Submit rejected: invalid question IDs', $request, $user, $attempt, [
+                    'question_ids' => $qIds,
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'One or more questions are invalid for this quiz',
+                ], 422);
+            }
+
+            foreach ($payload as $row) {
+                $qid = (int)($row['question_id'] ?? 0);
+                if ($qid <= 0) continue;
+
+                $selected  = $row['selected'] ?? null;
+                $timeSpent = max(0, (int)($row['time_spent_sec'] ?? 0));
+                $qType     = (string)($qMap[$qid]->question_type ?? 'mcq');
+                $selectedJson = json_encode($selected, JSON_UNESCAPED_UNICODE);
+
+                $existing = DB::table('quizz_attempt_answers')
+                    ->where('attempt_id', $attempt->id)
+                    ->where('question_id', $qid)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existing) {
+                    DB::table('quizz_attempt_answers')->where('id', $existing->id)->update([
+                        'selected_raw'   => $selectedJson,
+                        'question_type'  => $existing->question_type ?: $qType,
+                        'time_spent_sec' => (int)($existing->time_spent_sec ?? 0) + $timeSpent,
+                        'answered_at'    => $existing->answered_at ?: $now,
+                        'updated_at'     => $now,
+                    ]);
+                } else {
+                    DB::table('quizz_attempt_answers')->insert([
+                        'attempt_id'     => $attempt->id,
+                        'question_id'    => $qid,
+                        'question_type'  => $qType,
+                        'selected_raw'   => $selectedJson,
+                        'time_spent_sec' => $timeSpent,
+                        'answered_at'    => $now,
+                        'created_at'     => $now,
+                        'updated_at'     => $now,
+                    ]);
+                }
+            }
+
+            DB::table('quizz_attempts')->where('id', $attempt->id)->update([
+                'last_activity_at' => $now,
+                'updated_at'       => $now,
+            ]);
+        }
+
+        $scored  = $this->scoreAttempt($attempt->id);
+        $this->writeAttemptAnswerDerived($attempt->id, $scored['answers']);
+        $publish = $this->shouldPublishToStudent((int)$attempt->quiz_id);
+
+        $cnt = $scored['counters'];
+        $pct = $scored['total_marks'] ? round($scored['marks_obtained'] / $scored['total_marks'] * 100, 2) : 0;
+
+        $resultId = DB::table('quizz_results')->insertGetId([
+            'uuid'               => (string) Str::uuid(),
+            'attempt_id'         => (int) $attempt->id,
+            'quiz_id'            => (int) $attempt->quiz_id,
+            'user_id'            => (int) $attempt->user_id,
+            'marks_obtained'     => (int) $scored['marks_obtained'],
+            'total_marks'        => (int) $scored['total_marks'],
+            'marks_total'        => (int) $scored['total_marks'],
+            'total_questions'    => (int) $cnt['total_questions'],
+            'total_correct'      => (int) $cnt['total_correct'],
+            'total_incorrect'    => (int) $cnt['total_incorrect'],
+            'total_skipped'      => (int) $cnt['total_skipped'],
+            'percentage'         => $pct,
+            'attempt_number'     => (int) $this->attemptNumberForUser((int)$attempt->quiz_id, (int)$attempt->user_id) + 1,
+            'students_answer'    => json_encode($scored['answers'], JSON_UNESCAPED_UNICODE),
+            'publish_to_student' => $publish ? 1 : 0,
+            'result_set_up_type' => DB::table('quizz')->where('id', $attempt->quiz_id)->value('result_set_up_type') ?? 'Immediately',
+            'result_release_date'=> DB::table('quizz')->where('id', $attempt->quiz_id)->value('result_release_date'),
+            'created_at'         => $now,
+            'updated_at'         => $now,
+        ]);
+
+        DB::table('quizz_attempts')->where('id', $attempt->id)->update([
+            'status'      => 'submitted',
+            'finished_at' => $now,
+            'updated_at'  => $now,
+            'result_id'   => $resultId,
+        ]);
+
+        // ✅ Inside transaction — rolls back automatically if commit fails
+        $this->logActivity('quiz', 'store', 'Attempt submitted and scored successfully', $request, $user, $attempt, [
+            'result_id'       => $resultId,
+            'marks_obtained'  => $scored['marks_obtained'],
+            'total_marks'     => $scored['total_marks'],
+            'percentage'      => $pct,
+            'total_correct'   => $cnt['total_correct'],
+            'total_incorrect' => $cnt['total_incorrect'],
+            'total_skipped'   => $cnt['total_skipped'],
+        ]);
+
+        DB::commit();
+
+        $attempt = DB::table('quizz_attempts')->where('id', $attempt->id)->first();
+        $summary = $this->resultSummaryForAttempt($attempt);
+
+        return response()->json(['success'=>true] + $summary, 201);
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        Log::error('[Exam submit] failed', ['e' => $e->getMessage()]);
+
+        // ❌ Outside transaction — always persists even after rollback
+        $this->logActivity('quiz', 'default', 'Submit transaction failed and rolled back', $request, $user, $attempt, [
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json(['success'=>false,'message'=>'Failed to submit'], 500);
+    }
+}
     /* ============================================
      | Status
      |============================================ */
@@ -2215,4 +2255,286 @@ h1,h2{margin:6px 0}
             ],
         ], 200);
     }
+/**
+ * GET /api/exam/group-wise-result
+ * ?exam_key=bb7ca2fe-3e6d-494b-b62b-b4767e833470
+ * &student_key=c11cff07-d0e7-41db-bad0-cdc43efe6acd
+ * &attempt_number=1  (optional - filter by specific attempt)
+ */
+public function groupWiseResult(Request $request)
+{
+    // 1) Who is calling?
+    $student         = $this->getUserFromToken($request);
+    $isStudentCaller = $student && $this->isStudent($student);
+
+    $actor   = $this->actor($request);
+    $role    = strtolower(preg_replace('/[^a-z0-9]+/i', '', (string)($actor['role'] ?? '')));
+    $actorId = (int)($actor['id'] ?? 0);
+
+    // 2) Validate required params
+    $examKey    = $request->query('exam_key');
+    $studentKey = $request->query('student_key');
+
+    if (!$examKey || !$studentKey) {
+        return response()->json([
+            'success' => false,
+            'message' => 'exam_key and student_key are required'
+        ], 422);
+    }
+
+    // 3) Resolve quiz from exam_key
+    $quiz = DB::table('quizz')
+        ->where('uuid', $examKey)
+        ->first();
+
+    if (!$quiz) {
+        return response()->json(['success'=>false,'message'=>'Exam not found'], 404);
+    }
+
+    // 4) Resolve student from student_key
+    $studentRow = DB::table('users')
+        ->where('uuid', $studentKey)
+        ->first();
+
+    if (!$studentRow) {
+        return response()->json(['success'=>false,'message'=>'Student not found'], 404);
+    }
+
+    // 5) Find ALL results for this student + quiz
+    $resultsQuery = DB::table('quizz_results as r')
+        ->join('quizz_attempts as a', 'a.id', '=', 'r.attempt_id')
+        ->join('quizz as qz', 'qz.id', '=', 'r.quiz_id')
+        ->where('r.quiz_id', $quiz->id)
+        ->where('r.user_id', $studentRow->id)
+        ->orderBy('r.attempt_number', 'asc')
+        ->select([
+            'r.id as result_id',
+            'r.uuid as result_uuid',
+            'r.quiz_id',
+            'r.attempt_id',
+            'r.user_id',
+            'r.marks_obtained',
+            'r.total_marks',
+            'r.percentage',
+            'r.attempt_number',
+            'r.publish_to_student',
+            'r.created_at as result_created_at',
+
+            'a.id as attempt_id',
+            'a.uuid as attempt_uuid',
+            'a.status as attempt_status',
+            'a.started_at',
+            'a.finished_at',
+
+            'qz.uuid as quiz_uuid',
+            'qz.quiz_name',
+            'qz.total_time',
+            'qz.result_set_up_type',
+            'qz.result_release_date',
+        ]);
+
+    // optional: filter by attempt_number
+    $attemptNumberFilter = $request->query('attempt_number');
+    if ($attemptNumberFilter !== null) {
+        $resultsQuery->where('r.attempt_number', (int)$attemptNumberFilter);
+    }
+
+    $results = $resultsQuery->get();
+
+    if ($results->isEmpty()) {
+        return response()->json(['success'=>false,'message'=>'No results found for this student'], 404);
+    }
+
+    // 6) Access rules (check against first result)
+    $firstRow = $results->first();
+
+    if ($isStudentCaller) {
+        if ((int)$firstRow->user_id !== (int)$student->id) {
+            return response()->json(['success'=>false,'message'=>'Forbidden'], 403);
+        }
+        $allowViewNow = $this->shouldPublishToStudent((int)$firstRow->quiz_id);
+        if (!((int)$firstRow->publish_to_student === 1 || $allowViewNow)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Result is not yet published for students'
+            ], 403);
+        }
+    } else {
+        if (in_array($role, ['instructor','examiner'], true)) {
+            $assigned = DB::table('user_quiz_assignments')
+                ->where('quiz_id', (int)$firstRow->quiz_id)
+                ->where('user_id', $actorId)
+                ->whereNull('deleted_at')
+                ->where('status', 'active')
+                ->exists();
+
+            if (!$assigned) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You are not assigned to this quiz'
+                ], 403);
+            }
+        }
+    }
+
+    // 7) Helpers
+    $decodeSelected = function ($raw) {
+        if ($raw === null) return null;
+        $raw = (string)$raw;
+        if (trim($raw) === '') return null;
+        try { return json_decode($raw, true); } catch (\Throwable $e) { return null; }
+    };
+
+    $isAttempted = function ($qType, $selected) {
+        $qType = (string)$qType;
+        if ($qType === 'fill_in_the_blank') {
+            if ($selected === null) return false;
+            if (is_array($selected)) {
+                foreach ($selected as $v) if (trim((string)$v) !== '') return true;
+                return false;
+            }
+            return trim((string)$selected) !== '';
+        }
+        if ($selected === null) return false;
+        if (is_array($selected)) {
+            foreach ($selected as $v) {
+                if (is_numeric($v) && (int)$v > 0) return true;
+            }
+            return false;
+        }
+        if (is_numeric($selected)) return (int)$selected > 0;
+        return trim((string)$selected) !== '';
+    };
+
+    // 8) Build group-wise stats per attempt
+    $allAttempts = [];
+
+    foreach ($results as $row) {
+
+        $qRows = DB::table('quizz_questions as q')
+            ->leftJoin('quizz_attempt_answers as aa', function ($j) use ($row) {
+                $j->on('aa.question_id', '=', 'q.id')
+                  ->where('aa.attempt_id', '=', (int)$row->attempt_id);
+            })
+            ->where('q.quiz_id', (int)$row->quiz_id)
+            ->orderBy('q.question_order')
+            ->select([
+                'q.id as question_id',
+                'q.question_order',
+                'q.question_type',
+                'q.question_mark',
+                'q.group_title',
+                'aa.selected_raw',
+                'aa.is_correct',
+                'aa.awarded_mark',
+            ])
+            ->get();
+
+        $groups  = [];
+        $overall = [
+            'total_questions' => 0,
+            'attempted'       => 0,
+            'left'            => 0,
+            'correct'         => 0,
+            'incorrect'       => 0,
+            'marks_obtained'  => 0,
+            'total_marks'     => 0,
+            'percentage'      => 0.0,
+        ];
+
+        foreach ($qRows as $r) {
+            $group = trim((string)($r->group_title ?? ''));
+            if ($group === '') $group = 'Ungrouped';
+
+            if (!isset($groups[$group])) {
+                $groups[$group] = [
+                    'group_title'     => $group,
+                    'total_questions' => 0,
+                    'attempted'       => 0,
+                    'left'            => 0,
+                    'correct'         => 0,
+                    'incorrect'       => 0,
+                    'marks_obtained'  => 0,
+                    'total_marks'     => 0,
+                    'percentage'      => 0.0,
+                ];
+            }
+
+            $mark      = (int)($r->question_mark ?? 0);
+            $sel       = $decodeSelected($r->selected_raw);
+            $attempted = $isAttempted($r->question_type, $sel);
+            $isCorrect = (int)($r->is_correct ?? 0) === 1;
+            $awarded   = $r->awarded_mark !== null ? (int)$r->awarded_mark : ($isCorrect ? $mark : 0);
+
+            $groups[$group]['total_questions']++;
+            $groups[$group]['total_marks'] += $mark;
+            $overall['total_questions']++;
+            $overall['total_marks'] += $mark;
+
+            if ($attempted) {
+                $groups[$group]['attempted']++;
+                $overall['attempted']++;
+                if ($isCorrect) {
+                    $groups[$group]['correct']++;
+                    $overall['correct']++;
+                } else {
+                    $groups[$group]['incorrect']++;
+                    $overall['incorrect']++;
+                }
+            }
+
+            $groups[$group]['marks_obtained'] += $awarded;
+            $overall['marks_obtained']        += $awarded;
+        }
+
+        foreach ($groups as $k => $g) {
+            $groups[$k]['left'] = max(0, (int)$g['total_questions'] - (int)$g['attempted']);
+            $groups[$k]['percentage'] = $g['total_marks'] > 0
+                ? round($g['marks_obtained'] / max(1, $g['total_marks']) * 100, 2)
+                : 0.0;
+        }
+
+        $overall['left'] = max(0, (int)$overall['total_questions'] - (int)$overall['attempted']);
+        $overall['percentage'] = $overall['total_marks'] > 0
+            ? round($overall['marks_obtained'] / max(1, $overall['total_marks']) * 100, 2)
+            : 0.0;
+
+        $allAttempts[] = [
+            'result' => [
+                'id'                 => (int)$row->result_id,
+                'uuid'               => (string)$row->result_uuid,
+                'marks_obtained'     => (int)$row->marks_obtained,
+                'total_marks'        => (int)$row->total_marks,
+                'percentage'         => (float)($row->percentage ?? 0),
+                'attempt_number'     => (int)($row->attempt_number ?? 0),
+                'publish_to_student' => (int)($row->publish_to_student ?? 0),
+            ],
+            'attempt' => [
+                'id'         => (int)$row->attempt_id,
+                'uuid'       => (string)$row->attempt_uuid,
+                'status'     => (string)$row->attempt_status,
+                'started_at' => $row->started_at,
+                'finished_at'=> $row->finished_at,
+            ],
+            'overall' => $overall,
+            'groups'  => array_values($groups),
+        ];
+    }
+
+    return response()->json([
+        'success' => true,
+        'quiz' => [
+            'id'   => (int)$firstRow->quiz_id,
+            'uuid' => (string)$firstRow->quiz_uuid,
+            'name' => (string)($firstRow->quiz_name ?? 'Quiz'),
+        ],
+        'student' => [
+            'id'   => (int)$studentRow->id,
+            'uuid' => (string)$studentRow->uuid,
+            'name' => (string)($studentRow->name ?? ''),
+        ],
+        'total_attempts' => count($allAttempts),
+        'attempts'       => $allAttempts,
+    ], 200);
+}
 }

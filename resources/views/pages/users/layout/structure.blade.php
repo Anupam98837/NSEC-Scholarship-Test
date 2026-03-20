@@ -233,7 +233,8 @@
 <aside id="sidebar" class="w3-sidebar" aria-label="Sidebar">
   <div class="w3-sidebar-head">
     <a href="{{ $dashboardUrl }}" class="w3-brand">
-      <img id="logo" src="{{ asset('/assets/media/images/web/logo.png') }}" alt="Unzip Examination">
+      <img id="logo" src="{{ asset('/assets/media/images/web/logo1.jpg
+      ') }}" alt="Unzip Examination">
     </a>
   </div>
 
@@ -251,10 +252,10 @@
     </nav>
 
     <!-- MODULES -->
-    <div class="w3-nav-section">
-      <div class="w3-section-title"><i class="fa-solid fa-graduation-cap"></i> USERS</div>
-      <div class="w3-section-rule"></div>
-    </div>
+   <div id="w3UsersSectionHeader" class="w3-nav-section">
+  <div class="w3-section-title"><i class="fa-solid fa-graduation-cap"></i> USERS</div>
+  <div class="w3-section-rule"></div>
+</div>
 
     {{-- 1 ALL MENU (default population; shown only if API returns "all") --}}
     <div id="allMenuWrap" style="display:none">
@@ -323,45 +324,6 @@
         <a href="/quizz/manage" class="w3-link">Manage Quizzes</a>
       </div>
     </div>
-  <div class="w3-nav-section">
-      <div class="w3-section-title"><i class="fa-solid fa-graduation-cap"></i> GAMES & RESULTS </div>
-      <div class="w3-section-rule"></div>
-    </div>
-
-    <div class="w3-group">
-      <a href="#" class="w3-link w3-toggle" data-target="sm-admin-bubble-games" aria-expanded="false">
-        <i class="fa-solid fa-gamepad"></i><span>Bubble Games</span>
-        <i class="fa fa-chevron-down w3-chev"></i>
-      </a>
-      <div id="sm-admin-bubble-games" class="w3-submenu" role="group" aria-label="Bubble Games submenu">
-        <a href="/bubble-games/create" class="w3-link">Create Game</a>
-        <a href="/bubble-games/manage" class="w3-link">Manage Games</a>
-      </div>
-    </div>
-
-    <!-- ✅ NEW: Door Games -->
-    <div class="w3-group">
-      <a href="#" class="w3-link w3-toggle" data-target="sm-admin-door-games" aria-expanded="false">
-        <i class="fa-solid fa-door-open"></i><span>Door Games</span>
-        <i class="fa fa-chevron-down w3-chev"></i>
-      </a>
-      <div id="sm-admin-door-games" class="w3-submenu" role="group" aria-label="Door Games submenu">
-        <a href="/door-games/create" class="w3-link">Create Game</a>
-        <a href="/door-games/manage" class="w3-link">Manage Games</a>
-      </div>
-    </div>
-    {{-- ✅ NEW: Path Games --}}
-<div class="w3-group">
-  <a href="#" class="w3-link w3-toggle" data-target="sm-admin-path-games" aria-expanded="false">
-    <i class="fa-solid fa-route"></i><span>Path Games</span>
-    <i class="fa fa-chevron-down w3-chev"></i>
-  </a>
-
-  <div id="sm-admin-path-games" class="w3-submenu" role="group" aria-label="Path Games submenu">
-    <a href="/path-games/create" class="w3-link">Create Game</a>
-    <a href="/path-games/manage" class="w3-link">Manage Games</a>
-  </div>
-</div>
 {{-- ✅ END Path Games --}}
 
     <div class="w3-nav-section">
@@ -375,11 +337,11 @@
         <i class="fa fa-chevron-down w3-chev"></i>
       </a>
       <div id="sm-results" class="w3-submenu" role="group" aria-label="Results submenu">
-        <a href="/results" class="w3-link">Overall Results</a>
+        {{-- <a href="/results" class="w3-link">Overall Results</a> --}}
         <a href="/quizz/results" class="w3-link">Quiz Results</a>
-        <a href="/graphical-test/results" class="w3-link">Bubble Results</a>
+        {{-- <a href="/graphical-test/results" class="w3-link">Bubble Results</a>
         <a href="/decision-making-test/results" class="w3-link">Door Results</a>
-          <a href="/path-finding-test/results" class="w3-link">Path Results</a>
+          <a href="/path-finding-test/results" class="w3-link">Path Results</a> --}}
 
       </div>
     </div>
@@ -412,8 +374,25 @@
         <a href="/page-privilege/manage" class="w3-link">Manage Privilege</a>
       </div>
     </div>
+        {{-- ✅ MAILERS --}}
+    <div class="w3-nav-section">
+      <div class="w3-section-title">
+        <i class="fa-solid fa-envelope"></i> MAILERS
+      </div>
+      <div class="w3-section-rule"></div>
+    </div>
 
+    <div class="w3-group">
+      <a href="#" class="w3-link w3-toggle" data-target="sm-admin-mailers" aria-expanded="false">
+        <i class="fa-solid fa-envelope-open-text"></i><span>Mailers</span>
+        <i class="fa fa-chevron-down w3-chev"></i>
+      </a>
+      <div id="sm-admin-mailers" class="w3-submenu" role="group" aria-label="Mailers submenu">
+        <a href="/mailers/manage" class="w3-link">Manage Mailers</a>
+      </div>
+    </div>
   </nav>
+
 </div>
 {{-- EXAMINER --}}
 <div id="allMenuExaminer" style="display:none">
@@ -488,18 +467,57 @@
 
   </nav>
 </div>
+
       {{-- STUDENT --}}
       <div id="allMenuStudent" style="display:none">
         <nav class="w3-menu" aria-label="Student Modules">
           <a href="/quizzes" class="w3-link">
-            <i class="fa-solid fa-book-open"></i><span>My Quizzes</span>
+            <i class="fa-solid fa-book-open"></i><span>Exams</span>
           </a>
            <a href="/my/result" class="w3-link">
            <i class="fa-duotone fa-solid fa-square-poll-horizontal"></i><span>My Results</span>
           </a>
         </nav>
       </div>
+    {{-- ACADEMIC COUNSELLOR --}}
+      <div id="allMenuAcademicCounsellor" style="display:none">
+        <nav class="w3-menu" aria-label="Academic Counsellor Modules">
 
+          {{-- Users --}}
+          <div class="w3-nav-section">
+            <div class="w3-section-title"><i class="fa-solid fa-graduation-cap"></i> Leads </div>
+            <div class="w3-section-rule"></div>
+          </div>
+
+          <div class="w3-group">
+            <a href="#" class="w3-link w3-toggle" data-target="sm-ac-users" aria-expanded="false">
+              <i class="fa-solid fa-users"></i><span>Leads</span>
+              <i class="fa fa-chevron-down w3-chev"></i>
+            </a>
+            <div id="sm-ac-users" class="w3-submenu" role="group" aria-label="Users submenu">
+              <a href="/fresh-leads/manage" class="w3-link">Fresh Leads</a>
+               <a href="/my-leads" class="w3-link">My Leads</a>
+            </div>
+          </div>
+
+          {{-- Results --}}
+          <div class="w3-nav-section">
+            <div class="w3-section-title"><i class="fa-solid fa-square-poll-horizontal"></i> Results</div>
+            <div class="w3-section-rule"></div>
+          </div>
+
+          <div class="w3-group">
+            <a href="#" class="w3-link w3-toggle" data-target="sm-ac-results" aria-expanded="false">
+              <i class="fa-solid fa-square-poll-horizontal"></i><span>Results</span>
+              <i class="fa fa-chevron-down w3-chev"></i>
+            </a>
+            <div id="sm-ac-results" class="w3-submenu" role="group" aria-label="Results submenu">
+              <a href="/quizz/results" class="w3-link">Quiz Results</a>
+            </div>
+          </div>
+
+        </nav>
+      </div>
       {{-- Account (visible only on small screens) --}}
       <div class="w3-nav-section d-lg-none">
         <div class="w3-section-title"><i class="fa-solid fa-user"></i> ACCOUNT</div>
@@ -551,13 +569,16 @@
 
     <div class="ms-auto d-flex align-items-center gap-2">
       <!-- Theme toggle (desktop only) -->
-      <button id="btnTheme" class="w3-icon-btn js-theme-btn d-none d-lg-inline-grid" aria-label="Toggle theme" title="Toggle theme">
+       <div class="theme d-none">
+       <button id="btnTheme" class="w3-icon-btn js-theme-btn d-none d-lg-inline-grid" aria-label="Toggle theme" title="Toggle theme">
         <i class="fa-regular fa-moon" id="themeIcon"></i>
       </button>
+       </div>
+     
 
       <!-- Notifications -->
       <div class="dropdown">
-        <a href="#" class="w3-icon-btn" id="notificationsMenu" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notifications" title="Notifications">
+        <a href="#" class="w3-icon-btn d-none" id="notificationsMenu" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notifications" title="Notifications">
           <i class="fa-regular fa-bell"></i>
         </a>
         <div class="dropdown-menu dropdown-menu-end p-2 shadow" style="min-width:320px">
@@ -728,7 +749,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!r) return 'Admin';
     return r.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
   }
+  function toggleSectionHeaders(role){
+  const usersHdr = document.getElementById('w3UsersSectionHeader');
+  if (!usersHdr) return;
 
+  const r = String(role || '').toLowerCase();
+  const isAC = (r === 'academic_counsellor' || r === 'academic_counselor');
+
+  usersHdr.style.display = isAC ? 'none' : '';
+}
   function applyRoleLinks(role){
     const profileHref  = role === 'student' ? '/profile'  : '/profile';
     const settingsHref = role === 'student' ? '/student/settings' : '/settings';
@@ -738,15 +767,18 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function showRoleDefaultMenu(role){
-    const adminBox = document.getElementById('allMenuAdmin');
-    const exBox    = document.getElementById('allMenuExaminer');
-    const stBox    = document.getElementById('allMenuStudent');
+    const adminBox    = document.getElementById('allMenuAdmin');
+    const exBox       = document.getElementById('allMenuExaminer');
+    const stBox       = document.getElementById('allMenuStudent');
+    const acBox       = document.getElementById('allMenuAcademicCounsellor');
 
-    [adminBox, exBox, stBox].forEach(el => { if (el) el.style.display = 'none'; });
+    [adminBox, exBox, stBox, acBox].forEach(el => { if (el) el.style.display = 'none'; });
 
-    if (role === 'examiner') exBox && (exBox.style.display = '');
-    else if (role === 'student') stBox && (stBox.style.display = '');
-    else adminBox && (adminBox.style.display = '');
+    if (role === 'examiner')             exBox  && (exBox.style.display  = '');
+    else if (role === 'student')         stBox  && (stBox.style.display  = '');
+    else if (role === 'academic_counsellor' ||
+             role === 'academic_counselor')  acBox  && (acBox.style.display  = '');
+    else                                 adminBox && (adminBox.style.display = '');
   }
 
   async function detectAndPersistRole(){
@@ -766,6 +798,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.dataset.role = role || 'admin';
     if (roleLabelEl) roleLabelEl.textContent = titleizeRole(role);
     applyRoleLinks(role);
+    toggleSectionHeaders(role);
 
     return role;
   }
@@ -838,7 +871,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ✅ show correct default menu for role
     showRoleDefaultMenu(role);
-
+    toggleSectionHeaders(role);
     // ✅ bind submenu toggles for default menu
     bindSubmenuToggles(allMenuWrap || document);
 
@@ -916,7 +949,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const confirm = await Swal.fire({
       title: 'Log out?',
-      text: 'You will be signed out of Unzip Examination.',
+      text: 'You will be signed out.',
       icon: 'warning',
       showCancelButton: true,
       confirmButtonText: 'Yes, logout',

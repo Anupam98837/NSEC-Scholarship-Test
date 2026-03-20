@@ -23,13 +23,12 @@ use App\Http\Controllers\API\InterviewRegistrationCampaignController;
 use App\Http\Controllers\API\MasterResultController;
 use App\Http\Controllers\API\PathGameController;
 use App\Http\Controllers\API\PathGameResultController;
-use App\Http\Controllers\API\TermsController;
-use App\Http\Controllers\API\PrivacyPolicyController;
-use App\Http\Controllers\API\RefundPolicyController;
-use App\Http\Controllers\API\AboutUsController;
-use App\Http\Controllers\API\ContactUsController;
-use App\Http\Controllers\API\SessionTokenController;
-
+use App\Http\Controllers\API\ForgotPasswordController;
+use App\Http\Controllers\API\MailerController;
+use App\Http\Controllers\API\StudentCounsellorAssignmentController;
+use App\Http\Controllers\API\StudentPersonalAcademicDetailController;
+use App\Http\Controllers\API\ActivityLogsController;
+use App\Http\Controllers\API\RegisterController;
 
 
 Route::get('/user', function (Request $request) {
@@ -50,15 +49,20 @@ Route::get('/profile', [UserController::class, 'getProfile']);
 
 // Users Routes
 
+Route::prefix('auth/forgot-password')->group(function () {
+    Route::post('send-link', [ForgotPasswordController::class, 'sendLink']);
+    Route::post('reset',     [ForgotPasswordController::class, 'resetPassword']);
+});
+
 // Read-only (lists + show) – allow exam staff + admins
-Route::middleware(['checkRole:examiner,admin,super_admin'])->group(function () {
+Route::middleware(['checkRole:examiner,admin,super_admin,academic_counsellor'])->group(function () {
     Route::get('/users',      [UserController::class, 'index']);   // paginated
     Route::get('/users/all',  [UserController::class, 'all']);     // lightweight list
     Route::get('/users/{id}', [UserController::class, 'show']);    // single user detail
 });
 
 // Full management – only admins / super admins
-Route::middleware(['checkRole:admin,super_admin,student,examiner'])->group(function () {
+Route::middleware(['checkRole:admin,super_admin,student,examiner,academiccounsellor'])->group(function () {
     Route::post('/users',                        [UserController::class, 'store']);
     Route::match(['put','patch'], '/users/{id}', [UserController::class, 'update']);
     Route::delete('/users/{id}',                 [UserController::class, 'destroy']);
@@ -147,18 +151,10 @@ Route::middleware(['checkRole:student,admin,examiner,super_admin'])
             'resultDetailForInstructor',
         ]);
     });
-
     Route::post('/exam/attempts/{attempt}/bulk-answer', [ExamController::class, 'bulkAnswer']);
-
-
-
     Route::get('/quizz/result/all', [QuizzResultController::class, 'index']);
-  
-    
-
-
-
-// Admin dashboard (only admin + super_admin)
+ 
+   // Admin dashboard (only admin + super_admin)
 Route::middleware(['checkRole:admin,super_admin'])->group(function () {
     Route::get('/dashboard/admin', [DashboardController::class, 'adminDashboard']);
 });
@@ -634,51 +630,40 @@ Route::middleware('checkRole')->prefix('path-game-results')->group(function () {
     Route::get('/{idOrUuid}', [PathGameResultController::class, 'show']);
 });
 
+// Mailer Routes
+Route::middleware('checkRole:admin,super_admin')->group(function () {
+    Route::get(   '/mailer',              [MailerController::class, 'index']);
+    Route::post(  '/mailer',              [MailerController::class, 'store']);
+    Route::get(   '/mailer/{id}',         [MailerController::class, 'show']);
+    Route::put(   '/mailer/{id}',         [MailerController::class, 'update']);
+    Route::patch( '/mailer/{id}',         [MailerController::class, 'update']);
+    Route::put(   '/mailer/{id}/default', [MailerController::class, 'setDefault']);
+    Route::delete('/mailer/{id}',         [MailerController::class, 'destroy']);
+});
 
- 
-//Terms & Condition
-Route::prefix('terms')->group(function () {
-    Route::get('/', [TermsController::class, 'index']);
-    Route::get('/check', [TermsController::class, 'check']);
-    Route::post('/', [TermsController::class, 'store']);
-    Route::put('/', [TermsController::class, 'update']);  
-    Route::delete('/', [TermsController::class, 'destroy']);
+//students assigned to counsellors 
+Route::middleware('checkRole:super_admin,admin,college_administrator,academic_counsellor,student')->group(function () {
+    // Assign student -> counsellor (ONE TIME ONLY)
+    Route::post('/counsellors/{counsellorId}/students/{studentId}/assign', [StudentCounsellorAssignmentController::class, 'assign']);
+    Route::get('/my-assignments', [StudentCounsellorAssignmentController::class, 'myAssignments']);
+    });
+
+Route::middleware('checkRole')->group(function () {
+    Route::get('/student/personal-academic-details',  [StudentPersonalAcademicDetailController::class, 'show']);
+    Route::post('/student/personal-academic-details', [StudentPersonalAcademicDetailController::class, 'upsert']);
+    Route::delete('/student/personal-academic-details',[StudentPersonalAcademicDetailController::class, 'destroy']);
+    Route::get('/student-profile-details', [StudentPersonalAcademicDetailController::class, 'showStudentDetails']);
+    Route::get('/exam/group-wise-result', [ExamController::class, 'groupWiseResult']);
+    Route::get('/students/fresh-leads', [UserController::class, 'freshLeads']);
 });
- 
-//Privacy Policy
-Route::prefix('privacy-policy')->group(function () {
-    Route::get('/', [PrivacyPolicyController::class, 'index']);
-    Route::get('/check', [PrivacyPolicyController::class, 'check']);
-    Route::post('/', [PrivacyPolicyController::class, 'store']);
-    Route::put('/', [PrivacyPolicyController::class, 'update']);  
-    Route::delete('/', [PrivacyPolicyController::class, 'destroy']);
+Route::middleware('checkRole:admin,academiccounsellor')->group(function () {
+    Route::get('/activity-logs', [ActivityLogsController::class, 'index']);
+    Route::post('/activity-logs', [ActivityLogsController::class, 'store']);
+    Route::get('/activity-logs/meta', [ActivityLogsController::class, 'meta']);
 });
- 
- 
-//Refund Policy
-Route::prefix('refund-policy')->group(function () {
-    Route::get('/', [RefundPolicyController::class, 'index']);
-    Route::get('/check', [RefundPolicyController::class, 'check']);
-    Route::post('/', [RefundPolicyController::class, 'store']);
-    Route::put('/', [RefundPolicyController::class, 'update']);    
-    Route::delete('/', [RefundPolicyController::class, 'destroy']);
+Route::prefix('auth')->group(function () {
+    Route::post('/send-phone-otp',    [RegisterController::class, 'sendOtp']);
+    Route::post('/verify-phone-otp',  [RegisterController::class, 'verifyOtp']);
+    Route::post('/student-register',  [RegisterController::class, 'completeRegistration']);
+    Route::post('/resend-phone-otp',  [RegisterController::class, 'resendOtp']);
 });
-//About Us
-Route::get('/about-us', [AboutUsController::class, 'index']);
-Route::get('/about-us/check', [AboutUsController::class, 'check']);
- 
-Route::post('/about-us', [AboutUsController::class, 'store']); // create
-Route::put('/about-us', [AboutUsController::class, 'update']);
- 
-Route::delete('/about-us', [AboutUsController::class, 'destroy']);
- 
-//Contact Us
-/* Public */
-Route::post('/contact-us', [ContactUsController::class, 'store']);
- 
-/* Admin */
-Route::get('/contact-us', [ContactUsController::class, 'index']);
-Route::get('/contact-us/{id}', [ContactUsController::class, 'show']);
-Route::delete('/contact-us/{id}', [ContactUsController::class, 'destroy']);
-Route::get('/contact-us/export/csv', [ContactUsController::class, 'exportCsv']);
-Route::patch('/contact-us/{id}/read', [ContactUsController::class, 'markAsRead']);

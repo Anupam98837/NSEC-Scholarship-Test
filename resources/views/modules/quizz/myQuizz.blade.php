@@ -1,8 +1,4 @@
 {{-- resources/views/exam/my-quizzes-and-games.blade.php --}}
-@extends('pages.users.layout.structure')
-
-@section('title','My Quizzes & Games')
-
 @section('content')
 <style>
   .qz-wrap{
@@ -702,8 +698,10 @@ document.addEventListener('DOMContentLoaded', function () {
     return (isNaN(n) || n <= 0) ? 1 : n;
   }
 
+
   function pickUsedAttempts(item) {
     const candidates = [
+       item.attempt_total_count,
       item.my_attempts,
       item.attempts_used,
       item.attempts_taken,
@@ -1041,53 +1039,57 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function normalizeItem(item, type) {
-    const timeSec = item.time_limit_sec ?? item.time_limit ?? null;
-    const durationMin = (timeSec && !isNaN(parseInt(timeSec, 10)))
-      ? Math.ceil(parseInt(timeSec, 10) / 60)
-      : null;
+  const timeSec = item.time_limit_sec ?? item.time_limit ?? null;
+  const durationMin = (timeSec && !isNaN(parseInt(timeSec, 10)))
+    ? Math.ceil(parseInt(timeSec, 10) / 60)
+    : null;
 
-    return {
-      type: type, // quiz | game | door | path
-      uuid: item.uuid || item.id || null,
-      title: item.title || item.name || 'Item',
+  return {
+    type: type, // quiz | game | door | path
+    uuid: item.uuid || item.id || null,
+    title: item.title || item.name || 'Item',
 
-      instructions: pickInstructions(item),
-      excerpt: item.excerpt || '',
-      description: item.description || '',
-      status: item.status || 'active',
-      my_status: item.my_status || item.myStatus || 'Pending',
-      is_public: item.is_public ?? item.public ?? 0,
+    instructions: pickInstructions(item),
+    excerpt: item.excerpt || '',
+    description: item.description || '',
+    status: item.status || 'active',
+    my_status: item.my_status || item.myStatus || 'Pending',
+    is_public: item.is_public ?? item.public ?? 0,
 
-      total_time: item.total_time ?? item.total_time_minutes ?? item.duration ?? durationMin,
+    total_time: item.total_time ?? item.total_time_minutes ?? item.duration ?? durationMin,
 
-      time_limit_sec: item.time_limit_sec ?? null,
+    time_limit_sec: item.time_limit_sec ?? null,
 
-      attempt: item.attempt ?? null,
-      result: item.result ?? null,
+    attempt: item.attempt ?? null,
+    result: item.result ?? null,
 
-      total_attempts: item.total_attempts ?? null,
+    // ✅ Allowed attempts
+    total_attempts: item.total_attempts ?? null,
 
-      max_attempts_allowed: item.max_attempts_allowed,
-      max_attempts: item.max_attempts,
-      max_attempt: item.max_attempt,
-      attempts_allowed: item.attempts_allowed,
-      total_attempts_allowed: item.total_attempts_allowed,
+    // ✅ Used attempts (from API)
+    attempt_total_count: item.attempt_total_count ?? null,
 
-      my_attempts: item.my_attempts,
-      attempts_used: item.attempts_used,
-      attempts_taken: item.attempts_taken,
-      attempt_count: item.attempt_count,
-      latest_attempt_no: item.latest_attempt_no,
-      used_attempts: item.used_attempts,
-      remaining_attempts: item.remaining_attempts,
+    max_attempts_allowed: item.max_attempts_allowed,
+    max_attempts: item.max_attempts,
+    max_attempt: item.max_attempt,
+    attempts_allowed: item.attempts_allowed,
+    total_attempts_allowed: item.total_attempts_allowed,
 
-      max_attempt_reached: item.max_attempt_reached,
-      can_attempt: item.can_attempt,
+    my_attempts: item.my_attempts,
+    attempts_used: item.attempts_used,
+    attempts_taken: item.attempts_taken,
+    attempt_count: item.attempt_count,
+    latest_attempt_no: item.latest_attempt_no,
+    used_attempts: item.used_attempts,
+    remaining_attempts: item.remaining_attempts,
 
-      assigned_at: item.assigned_at || null,
-      created_at: item.created_at || null
-    };
-  }
+    max_attempt_reached: item.max_attempt_reached,
+    can_attempt: item.can_attempt,
+
+    assigned_at: item.assigned_at || null,
+    created_at: item.created_at || null
+  };
+}
 
   async function fetchAll() {
     const token = requireAuthToken();
@@ -1136,10 +1138,16 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!dr.ok && dr._err) partialErrors.push('Door Games');
       if (!pg.ok && pg._err) partialErrors.push('Path Games');
 
-      if (partialErrors.length) {
+      const SHOW_PARTIAL_ERRORS = false;
+
+      if (SHOW_PARTIAL_ERRORS && partialErrors.length) {
         errEl.textContent = partialErrors.join(', ') + ' failed to load (showing available items).';
         errEl.classList.add('show');
+      } else {
+        errEl.classList.remove('show');
+        errEl.textContent = '';
       }
+
 
     } catch (e) {
       console.error(e);

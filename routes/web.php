@@ -1,25 +1,32 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-
-
-Route::get('/', function () {
-    return view('landing.pages.home');
-});
-
+use Illuminate\Http\Request;
 /*
 |--------------------------------------------------------------------------
 | 1) Login Routes
 |--------------------------------------------------------------------------
 */
 
-Route::get('/login', function () {
+Route::get('/', function () {
     return view('pages.auth.login');
 });
-Route::get('/register/{uid}', function ($uid) {
-    return view('pages.auth.register');
-})->where('uid', '.*');
+// Route::get('/register/{uid?}', function (?string $uid = null) {
+//     return view('pages.auth.register', compact('uid'));
+// })->whereUuid('uid');
 
+Route::get('/register', function () {
+    return view('pages.auth.register');
+})->name('register');
+
+Route::get('/forgot-password', fn () => view('pages.auth.forgotPassword'));
+Route::get('/reset-password', function (Request $request) {
+    if (!$request->query('token') || !$request->query('email')) {
+        return redirect('/login')->with('error', 'Invalid or incomplete reset link.');
+    }
+
+    return view('pages.auth.resetPassword');
+})->name('password.reset');
  
 /*
 |--------------------------------------------------------------------------
@@ -42,6 +49,9 @@ Route::get('/profile', fn () => view('pages.users.pages.common.profile'))->name(
 Route::get('/users/manage', function () {
     return view('pages.users.pages.users.manageUsers');
 });
+
+/* Mailers */
+Route::get('/mailers/manage', fn () => view('pages.users.pages.mailers.manageMailers'))->name('mailers.manage');
 
 /*
 |--------------------------------------------------------------------------
@@ -267,34 +277,43 @@ Route::get('/my/result', function () {
     return view('modules.result.myResult');
 });
 
+Route::get('/interview-registration-campaigns/create', function (Request $request) {
 
-Route::get('/registration-campaign/create', function () {
-    return view('pages.users.pages.interviewRegistrationCampaigns.createInterviewRegistrationCampaign');
-});
+    $editId = $request->query('edit');   // example: /create?edit=2
+    $mode   = $editId ? 'edit' : 'create';
+
+    $campaign = null;
+    if ($editId) {
+        $campaign = DB::table('interview_registration_campaigns')
+            ->where('id', $editId)
+            ->first();
+
+        abort_if(!$campaign, 404);
+    }
+
+    return view(
+        'pages.users.pages.interviewRegistrationCampaigns.createInterviewRegistrationCampaign',
+        compact('mode', 'editId', 'campaign')
+    );
+})->name('interview-registration-campaigns.create');
+
 
 Route::get('/interview-registration-campaigns/manage', function () {
     return view('pages.users.pages.interviewRegistrationCampaigns.manageInterviewRegistrationCampaigns');
 });
 
 
-//Activity Logs
-Route::get('/activity-logs', function () {
-    return view('modules/logs/activityLogs');
+Route::get('/fresh-leads/manage', function () {
+    return view('pages.users.pages.freshLeads.freshLeads');
 });
- 
-//public 
 
-Route::get('/terms&conditions', fn () => view('pages.landing.pages.termsAndCondition'));
-Route::get('/privacypolicy', fn () => view('pages.landing.pages.privacyPolicy'));
-Route::get('/refundpolicy', fn () => view('pages.landing.pages.refundPolicy'));
+Route::get('/my-leads', function () {
+    return view('pages.users.pages.freshLeads.myLeads');
+});
+Route::get('/student-academic-details', function () {
+    return view('pages.users.pages.studentAcademicDetails.studentAcademicDetails');
+});
 
-Route::get('/about-us', fn () => view('pages.landing.pages.aboutUs'));
-Route::get('/contact-us', fn () => view('pages.landing.pages.contactUs'));
-
-//admin manage
-
-Route::get('/terms-and-conditions/manage', fn () => view('pages.users.pages.landingPages.manageTermsAndCondition'));
-Route::get('/refund-policy/manage', fn () => view('pages.users.pages.landingPages.manageRefundPolicy'));
-Route::get('/privacy-policy/manage', fn () => view('pages.users.pages.landingPages.managePrivacyPolicy'));
-Route::get('/about-us/manage', fn () => view('pages.users.pages.landingPages.manageAboutUs'));
-Route::get('/enquiry/manage', fn () => view('pages.users.pages.landingPages.manageEnquiry'));
+Route::get('/student-profile-details', function () {
+    return view('pages.users.pages.studentAcademicDetails.studentProfileDetails');
+});
