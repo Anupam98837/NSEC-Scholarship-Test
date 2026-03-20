@@ -372,6 +372,10 @@
       <button class="ux-login" id="ux_btn" type="submit">
         <span class="me-2"><i class="fa-solid fa-right-to-bracket"></i></span> Login
       </button>
+      <div class="text-center mt-3">
+  <span class="text-muted">Don’t have an account? </span>
+  <a href="/register" class="text-decoration-none fw-semibold">Register</a>
+</div>
     </form>
   </section>
 </div>
