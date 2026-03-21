@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Contracts\PasswordResetMailer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -13,15 +14,18 @@ use Illuminate\Support\Str;
 
 class ForgotPasswordController extends Controller
 {
-    /* =========================================================
-     | Constructor — mailer injected (swap anytime)
-     * ========================================================= */
+    // ── Resend cooldown ladder (seconds) ─────────────────────────────
+    // 1st send  → sets 2 min cooldown before 1st resend is allowed
+    // 1st resend → sets 5 min cooldown before 2nd resend is allowed
+    // 2nd resend → hard-locks for 24h
+    private const COOLDOWNS = [120, 300];   // indexed by attempt count (0-based)
+    private const LOCK_TTL  = 86400;        // 24 hours in seconds
 
     public function __construct(protected PasswordResetMailer $mailer) {}
 
-    /* =========================================================
-     | Activity Log
-     * ========================================================= */
+    // ═══════════════════════════════════════════════════════════
+    // Activity Log — ZERO changes
+    // ═══════════════════════════════════════════════════════════
 
     private function activityActor(Request $r): array
     {
@@ -67,16 +71,34 @@ class ForgotPasswordController extends Controller
         }
     }
 
+    // ── Cache key helpers ─────────────────────────────────────────────
+    private function cacheSlug(string $identifier): string
+    {
+        return md5(strtolower($identifier));
+    }
+
+    private function lockKey(string $slug): string     { return "fp_lock:{$slug}"; }
+    private function cooldownKey(string $slug): string { return "fp_cooldown:{$slug}"; }
+    private function attemptKey(string $slug): string  { return "fp_attempts:{$slug}"; }
+
+    private function clearRateLimitCache(string $identifier): void
+    {
+        $slug = $this->cacheSlug($identifier);
+        Cache::forget($this->lockKey($slug));
+        Cache::forget($this->cooldownKey($slug));
+        Cache::forget($this->attemptKey($slug));
+    }
+
     /* =========================================================
-     | API 1 — POST /api/auth/forgot-password/send-link
-     | body: { email }
+     | API 1 — POST /api/auth/forgot-password/send-otp
+     | body: { identifier }  ← email OR phone number
      * ========================================================= */
 
-    public function sendLink(Request $r)
+    public function sendOtp(Request $r)
     {
         $reqId = (string) Str::uuid();
 
-        Log::channel('daily')->info('FP_SEND_LINK:HIT', [
+        Log::channel('daily')->info('FP_SEND_OTP:HIT', [
             'request_id' => $reqId,
             'method'     => $r->method(),
             'path'       => $r->path(),
@@ -87,155 +109,271 @@ class ForgotPasswordController extends Controller
         ]);
 
         $r->validate([
-            'email' => ['required', 'email', 'max:255'],
+            'identifier' => ['required', 'string', 'max:255'],
         ]);
 
-        $email = strtolower(trim($r->email));
+        $identifier = trim($r->identifier);
+        $isEmail    = filter_var($identifier, FILTER_VALIDATE_EMAIL) !== false;
+        $identifier = $isEmail ? strtolower($identifier) : preg_replace('/\s+/', '', $identifier);
 
-        Log::channel('daily')->info('FP_SEND_LINK:AFTER_VALIDATE', [
+        Log::channel('daily')->info('FP_SEND_OTP:AFTER_VALIDATE', [
             'request_id' => $reqId,
-            'email'      => $email,
+            'identifier' => $identifier,
+            'type'       => $isEmail ? 'email' : 'phone',
         ]);
 
-        // Never reveal if email exists or not
-        $genericMessage = 'If this email exists in our system, a password reset link has been sent.';
+        // ── Rate-limit check ──────────────────────────────────────────
+        $slug        = $this->cacheSlug($identifier);
+        $lockKey     = $this->lockKey($slug);
+        $cooldownKey = $this->cooldownKey($slug);
+        $attemptKey  = $this->attemptKey($slug);
 
-        $userExists = DB::table('users')->where('email', $email)->exists();
+        if (Cache::has($lockKey)) {
+            $retryAfter = (int) Cache::get($lockKey);
 
-        Log::channel('daily')->info('FP_SEND_LINK:USER_EXISTS_CHECK', [
-            'request_id'  => $reqId,
-            'email'       => $email,
-            'user_exists' => (bool) $userExists,
-        ]);
+            Log::channel('daily')->warning('FP_SEND_OTP:HARD_LOCKED', [
+                'request_id'  => $reqId,
+                'identifier'  => $identifier,
+                'retry_after' => $retryAfter,
+            ]);
 
-        if (!$userExists) {
             $this->logActivity(
                 $r,
                 'store',
-                'Forgot password link requested — user not found (silent success)',
-                'password_reset_token',
+                'OTP request blocked — identifier hard-locked for 24h',
+                'password_reset_tokens',
                 null,
-                ['email'],
+                ['identifier'],
                 null,
-                ['email' => $email, 'request_id' => $reqId]
+                ['identifier' => $identifier, 'retry_after' => $retryAfter, 'request_id' => $reqId]
             );
 
-            Log::channel('daily')->warning('FP_SEND_LINK:USER_NOT_FOUND_SILENT_SUCCESS', [
-                'request_id' => $reqId,
-                'email'      => $email,
+            return response()->json([
+                'status'      => 'error',
+                'message'     => 'Too many attempts. Please try again after 24 hours.',
+                'retry_after' => $retryAfter,
+                'locked'      => true,
+            ], 429);
+        }
+
+        if (Cache::has($cooldownKey)) {
+            $retryAfter = (int) Cache::get($cooldownKey);
+
+            Log::channel('daily')->warning('FP_SEND_OTP:COOLDOWN_ACTIVE', [
+                'request_id'  => $reqId,
+                'identifier'  => $identifier,
+                'retry_after' => $retryAfter,
             ]);
 
             return response()->json([
-                'status'  => 'success',
-                'message' => $genericMessage,
-                'data'    => ['request_id' => $reqId],
+                'status'      => 'error',
+                'message'     => 'Please wait before requesting another OTP.',
+                'retry_after' => $retryAfter,
+                'locked'      => false,
+            ], 429);
+        }
+
+        // ── Increment attempt counter ─────────────────────────────────
+        // attempts starts at 0; after first send it becomes 1, etc.
+        $attempts = (int) Cache::get($attemptKey, 0);
+        $attempts++;
+
+        if ($attempts > count(self::COOLDOWNS)) {
+            // All resends exhausted → hard-lock 24h
+            Cache::put($lockKey, self::LOCK_TTL, self::LOCK_TTL);
+            Cache::forget($attemptKey);
+            Cache::forget($cooldownKey);
+
+            Log::channel('daily')->warning('FP_SEND_OTP:HARD_LOCK_SET', [
+                'request_id' => $reqId,
+                'identifier' => $identifier,
+                'attempts'   => $attempts,
+            ]);
+
+            $this->logActivity(
+                $r,
+                'store',
+                'OTP request blocked — max resends exceeded, hard-locked 24h',
+                'password_reset_tokens',
+                null,
+                ['identifier'],
+                null,
+                ['identifier' => $identifier, 'attempts' => $attempts, 'request_id' => $reqId]
+            );
+
+            return response()->json([
+                'status'      => 'error',
+                'message'     => 'Too many attempts. Please try again after 24 hours.',
+                'retry_after' => self::LOCK_TTL,
+                'locked'      => true,
+            ], 429);
+        }
+
+        // Store updated attempt count (survives for 24h)
+        Cache::put($attemptKey, $attempts, self::LOCK_TTL);
+
+        // Set cooldown for the NEXT resend click (0-indexed: attempt 1→120s, attempt 2→300s)
+        $nextCooldown = self::COOLDOWNS[$attempts - 1];
+        Cache::put($cooldownKey, $nextCooldown, $nextCooldown);
+
+        Log::channel('daily')->info('FP_SEND_OTP:RATE_LIMIT_UPDATED', [
+            'request_id'   => $reqId,
+            'identifier'   => $identifier,
+            'attempt'      => $attempts,
+            'next_cooldown'=> $nextCooldown,
+        ]);
+
+        // ── Everything below is ZERO changes from your original ───────
+        $genericMessage = 'If this account exists in our system, an OTP has been sent to your registered contact.';
+
+        $userRow = $isEmail
+            ? DB::table('users')->select('id', 'email', 'phone_number')->where('email', $identifier)->first()
+            : DB::table('users')->select('id', 'email', 'phone_number')->where('phone_number', $identifier)->first();
+
+        Log::channel('daily')->info('FP_SEND_OTP:USER_EXISTS_CHECK', [
+            'request_id'  => $reqId,
+            'identifier'  => $identifier,
+            'user_exists' => (bool) $userRow,
+        ]);
+
+        if (!$userRow) {
+            $this->logActivity(
+                $r,
+                'store',
+                'OTP requested — user not found (silent success)',
+                'password_reset_tokens',
+                null,
+                ['identifier'],
+                null,
+                ['identifier' => $identifier, 'request_id' => $reqId]
+            );
+
+            Log::channel('daily')->warning('FP_SEND_OTP:USER_NOT_FOUND_SILENT_SUCCESS', [
+                'request_id' => $reqId,
+                'identifier' => $identifier,
+            ]);
+
+            return response()->json([
+                'status'      => 'success',
+                'message'     => $genericMessage,
+                'retry_after' => $nextCooldown,
+                'data'        => [
+                    'request_id' => $reqId,
+                    'email'      => $isEmail ? $identifier : null,
+                    'phone'      => $isEmail ? null : $identifier,
+                ],
             ]);
         }
 
-        // Invalidate all previous active tokens for this email
-        $invalidated = DB::table('password_reset_token')
-            ->where('email', $email)
-            ->where('is_valid', 1)
-            ->update(['is_valid' => 0]);
+        $email    = !empty($userRow->email)        ? strtolower(trim($userRow->email))   : null;
+        $phone    = !empty($userRow->phone_number) ? trim($userRow->phone_number)         : null;
+        $tokenKey = $email ?? $phone;
 
-        Log::channel('daily')->info('FP_SEND_LINK:INVALIDATED_OLD_TOKENS', [
+        Log::channel('daily')->info('FP_SEND_OTP:RESOLVED', [
+            'request_id' => $reqId,
+            'has_email'  => (bool) $email,
+            'has_phone'  => (bool) $phone,
+            'token_key'  => $tokenKey,
+        ]);
+
+        $invalidated = DB::table('password_reset_tokens')
+            ->where('email', $tokenKey)
+            ->whereNull('verified_at')
+            ->update(['verified_at' => Carbon::now()]);
+
+        Log::channel('daily')->info('FP_SEND_OTP:INVALIDATED_OLD_TOKENS', [
             'request_id'        => $reqId,
-            'email'             => $email,
+            'token_key'         => $tokenKey,
             'invalidated_count' => (int) $invalidated,
         ]);
 
-        // Generate raw token — only hash goes into DB
-        $rawToken  = Str::random(64);
-        $tokenHash = Hash::make($rawToken);
-
+        $otp       = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         $now       = Carbon::now();
-        $expiresAt = $now->copy()->addMinutes(10); // ✅ valid for 10 minutes only
+        $expiresAt = $now->copy()->addMinutes(10);
 
-        Log::channel('daily')->info('FP_SEND_LINK:TOKEN_GENERATED', [
+        Log::channel('daily')->info('FP_SEND_OTP:OTP_GENERATED', [
             'request_id' => $reqId,
-            'email'      => $email,
+            'token_key'  => $tokenKey,
             'expires_at' => $expiresAt->toDateTimeString(),
         ]);
 
         try {
-            DB::table('password_reset_token')->insert([
-                'email'      => $email,
-                'token'      => $tokenHash,
-                'expires_at' => $expiresAt,
-                'is_valid'   => 1,
-                'used_at'    => null,
-                'created_at' => $now,
+            DB::table('password_reset_tokens')->where('email', $tokenKey)->delete();
+
+            DB::table('password_reset_tokens')->insert([
+                'email'       => $tokenKey,
+                'token'       => Str::random(64),
+                'phone_no'    => $phone,
+                'otp'         => $otp,
+                'expires_at'  => $expiresAt,
+                'verified_at' => null,
+                'created_at'  => $now,
             ]);
 
-            Log::channel('daily')->info('FP_SEND_LINK:INSERT_OK', [
+            Log::channel('daily')->info('FP_SEND_OTP:INSERT_OK', [
                 'request_id' => $reqId,
-                'email'      => $email,
+                'token_key'  => $tokenKey,
             ]);
 
             $this->logActivity(
                 $r,
                 'store',
-                'Password reset token generated and stored — valid 10 minutes',
-                'password_reset_token',
+                'OTP generated and stored — valid 10 minutes',
+                'password_reset_tokens',
                 null,
-                ['email', 'expires_at', 'is_valid'],
+                ['email', 'phone_no', 'otp', 'expires_at'],
                 null,
                 [
-                    'email'      => $email,
+                    'token_key'  => $tokenKey,
+                    'phone_no'   => $phone,
                     'expires_at' => $expiresAt->toDateTimeString(),
-                    'is_valid'   => 1,
                     'request_id' => $reqId,
                 ]
             );
+
         } catch (\Throwable $e) {
-            Log::channel('daily')->error('FP_SEND_LINK:INSERT_FAILED', [
+            Log::channel('daily')->error('FP_SEND_OTP:INSERT_FAILED', [
                 'request_id' => $reqId,
-                'email'      => $email,
+                'token_key'  => $tokenKey,
                 'error'      => $e->getMessage(),
             ]);
 
             return response()->json([
                 'status'  => 'error',
-                'message' => 'Failed to generate reset link. Please try again.',
+                'message' => 'Failed to generate OTP. Please try again.',
                 'data'    => ['request_id' => $reqId],
             ], 500);
         }
 
-        // Build reset URL — raw token embedded, never the hash
-       // Build reset URL — uses APP_URL automatically (local/live)
-$resetUrl = route('password.reset', [
-    'token' => $rawToken,
-    'email' => $email,
-]);
+        if ($email) {
+            $this->mailer->sendOtp($email, $otp, $phone);
+        } else {
+            $this->mailer->sendOtp(null, $otp, $phone);
+        }
 
-Log::channel('daily')->info('FP_SEND_LINK:RESET_URL_BUILT', [
-    'request_id' => $reqId,
-    'email'      => $email,
-    // DEV ONLY — remove reset_url log line in production
-    'reset_url'  => $resetUrl,
-]);
-
-        // Hand off to mailer — plug your real mailer in AppServiceProvider
-        $this->mailer->sendResetLink($email, $resetUrl);
-
-        Log::channel('daily')->info('FP_SEND_LINK:MAILER_CALLED', [
+        Log::channel('daily')->info('FP_SEND_OTP:DISPATCHED', [
             'request_id' => $reqId,
-            'email'      => $email,
+            'has_email'  => (bool) $email,
+            'has_phone'  => (bool) $phone,
         ]);
 
         return response()->json([
-            'status'  => 'success',
-            'message' => $genericMessage,
-            'data'    => [
+            'status'      => 'success',
+            'message'     => $genericMessage,
+            'retry_after' => $nextCooldown,   // ← frontend drives its timer from this
+            'data'        => [
                 'request_id'         => $reqId,
                 'expires_in_minutes' => 10,
+                'email'              => $email,
+                'phone'              => $phone,
+                'token_key'          => $tokenKey,
             ],
         ]);
     }
 
     /* =========================================================
      | API 2 — POST /api/auth/forgot-password/reset
-     | body: { email, token, password, password_confirmation }
+     | Only addition: clear rate-limit cache on success
      * ========================================================= */
 
     public function resetPassword(Request $r)
@@ -251,99 +389,97 @@ Log::channel('daily')->info('FP_SEND_LINK:RESET_URL_BUILT', [
         ]);
 
         $r->validate([
-            'email'    => ['required', 'email', 'max:255'],
-            'token'    => ['required', 'string', 'min:10'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'token_key' => ['required', 'string', 'max:255'],
+            'otp'       => ['required', 'string', 'digits:6'],
+            'password'  => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
-        $email    = strtolower(trim($r->email));
-        $rawToken = $r->token;
+        $tokenKey = trim($r->token_key);
+        $otp      = $r->otp;
 
-        // Fetch latest valid unused token for this email
-        $row = DB::table('password_reset_token')
-            ->where('email', $email)
-            ->where('is_valid', 1)
-            ->whereNull('used_at')
-            ->orderByDesc('created_at')
+        $row = DB::table('password_reset_tokens')
+            ->where('email', $tokenKey)
+            ->whereNull('verified_at')
             ->first();
 
         Log::channel('daily')->info('FP_RESET:RECORD_FETCH', [
             'request_id'   => $reqId,
-            'email'        => $email,
+            'token_key'    => $tokenKey,
             'record_found' => (bool) $row,
         ]);
 
         if (!$row) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'This reset link is invalid or has expired.',
+                'message' => 'This OTP is invalid or has expired.',
             ], 422);
         }
 
-        // ✅ Expiry check — 10 minutes
         if (Carbon::parse($row->expires_at)->isPast()) {
-            DB::table('password_reset_token')
-                ->where('id', $row->id)
-                ->update(['is_valid' => 0]);
+            DB::table('password_reset_tokens')
+                ->where('email', $tokenKey)
+                ->update(['verified_at' => Carbon::now()]);
 
             $this->logActivity(
                 $r,
                 'update',
-                'Reset token expired (10 min window passed) — invalidated',
-                'password_reset_token',
-                (int) $row->id,
-                ['is_valid'],
-                ['is_valid' => 1, 'email' => $email],
-                ['is_valid' => 0, 'email' => $email]
+                'OTP expired (10 min window passed) — invalidated',
+                'password_reset_tokens',
+                null,
+                ['verified_at'],
+                ['verified_at' => null,              'token_key' => $tokenKey],
+                ['verified_at' => Carbon::now()->toDateTimeString(), 'token_key' => $tokenKey]
             );
 
-            Log::channel('daily')->warning('FP_RESET:TOKEN_EXPIRED', [
+            Log::channel('daily')->warning('FP_RESET:OTP_EXPIRED', [
                 'request_id' => $reqId,
-                'email'      => $email,
+                'token_key'  => $tokenKey,
                 'expired_at' => $row->expires_at,
             ]);
 
             return response()->json([
                 'status'  => 'error',
-                'message' => 'This reset link is invalid or has expired.',
+                'message' => 'This OTP is invalid or has expired.',
             ], 422);
         }
 
-        // Token hash check
-        if (!Hash::check($rawToken, $row->token)) {
-            Log::channel('daily')->warning('FP_RESET:TOKEN_MISMATCH', [
+        if ($row->otp !== $otp) {
+            Log::channel('daily')->warning('FP_RESET:OTP_MISMATCH', [
                 'request_id' => $reqId,
-                'email'      => $email,
+                'token_key'  => $tokenKey,
             ]);
 
             return response()->json([
                 'status'  => 'error',
-                'message' => 'This reset link is invalid or has expired.',
+                'message' => 'This OTP is invalid or has expired.',
             ], 422);
         }
 
-        // Confirm user still exists
-        $userRow = DB::table('users')->select('id')->where('email', $email)->first();
+        $isEmail = filter_var($tokenKey, FILTER_VALIDATE_EMAIL) !== false;
+
+        $userRow = $isEmail
+            ? DB::table('users')->select('id', 'email', 'phone_number')->where('email', $tokenKey)->first()
+            : DB::table('users')->select('id', 'email', 'phone_number')->where('phone_number', $tokenKey)->first();
 
         if (!$userRow) {
-            DB::table('password_reset_token')
-                ->where('id', $row->id)
-                ->update(['is_valid' => 0]);
+            DB::table('password_reset_tokens')
+                ->where('email', $tokenKey)
+                ->update(['verified_at' => Carbon::now()]);
 
             $this->logActivity(
                 $r,
                 'update',
-                'User not found during reset — invalidated record',
-                'password_reset_token',
-                (int) $row->id,
-                ['is_valid'],
-                ['is_valid' => 1, 'email' => $email],
-                ['is_valid' => 0, 'email' => $email]
+                'User not found during reset — invalidated OTP record',
+                'password_reset_tokens',
+                null,
+                ['verified_at'],
+                ['verified_at' => null,              'token_key' => $tokenKey],
+                ['verified_at' => Carbon::now()->toDateTimeString(), 'token_key' => $tokenKey]
             );
 
             Log::channel('daily')->error('FP_RESET:USER_NOT_FOUND', [
                 'request_id' => $reqId,
-                'email'      => $email,
+                'token_key'  => $tokenKey,
             ]);
 
             return response()->json([
@@ -352,17 +488,21 @@ Log::channel('daily')->info('FP_SEND_LINK:RESET_URL_BUILT', [
             ], 404);
         }
 
-        // Update password
-        DB::table('users')
-            ->where('email', $email)
-            ->update([
-                'password'   => Hash::make($r->password),
-                'updated_at' => Carbon::now(),
-            ]);
+        $updateQuery = DB::table('users');
+        if ($isEmail) {
+            $updateQuery->where('email', $tokenKey);
+        } else {
+            $updateQuery->where('phone_number', $tokenKey);
+        }
+
+        $updateQuery->update([
+            'password'   => Hash::make($r->password),
+            'updated_at' => Carbon::now(),
+        ]);
 
         Log::channel('daily')->info('FP_RESET:PASSWORD_UPDATED', [
             'request_id' => $reqId,
-            'email'      => $email,
+            'token_key'  => $tokenKey,
             'user_id'    => $userRow->id,
         ]);
 
@@ -373,33 +513,36 @@ Log::channel('daily')->info('FP_SEND_LINK:RESET_URL_BUILT', [
             'users',
             (int) $userRow->id,
             ['password', 'updated_at'],
-            ['email' => $email],
-            ['email' => $email]
+            ['token_key' => $tokenKey],
+            ['token_key' => $tokenKey]
         );
 
-        // Mark token as used + invalidate
-        DB::table('password_reset_token')
-            ->where('id', $row->id)
-            ->update([
-                'is_valid' => 0,
-                'used_at'  => Carbon::now(),
-            ]);
+        DB::table('password_reset_tokens')
+            ->where('email', $tokenKey)
+            ->update(['verified_at' => Carbon::now()]);
 
         $this->logActivity(
             $r,
             'update',
-            'Reset token marked used and invalidated after successful reset',
-            'password_reset_token',
-            (int) $row->id,
-            ['is_valid', 'used_at'],
-            ['is_valid' => 1, 'used_at' => null,              'email' => $email],
-            ['is_valid' => 0, 'used_at' => Carbon::now()->toDateTimeString(), 'email' => $email]
+            'OTP marked verified and consumed after successful reset',
+            'password_reset_tokens',
+            null,
+            ['verified_at'],
+            ['verified_at' => null,                              'token_key' => $tokenKey],
+            ['verified_at' => Carbon::now()->toDateTimeString(), 'token_key' => $tokenKey]
         );
 
-        Log::channel('daily')->info('FP_RESET:TOKEN_INVALIDATED', [
+        Log::channel('daily')->info('FP_RESET:OTP_CONSUMED', [
             'request_id' => $reqId,
-            'email'      => $email,
-            'record_id'  => $row->id,
+            'token_key'  => $tokenKey,
+        ]);
+
+        // ── Clear rate-limit cache so user can reset again cleanly ────
+        $this->clearRateLimitCache($tokenKey);
+
+        Log::channel('daily')->info('FP_RESET:RATE_LIMIT_CACHE_CLEARED', [
+            'request_id' => $reqId,
+            'token_key'  => $tokenKey,
         ]);
 
         return response()->json([

@@ -3,7 +3,8 @@
 namespace App\Services;
 
 use App\Contracts\PasswordResetMailer;
-use App\Mail\PasswordResetLinkMail;
+use App\Contracts\SmsService;
+use App\Mail\PasswordResetOtpMail;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -12,21 +13,44 @@ use Throwable;
 
 class SmtpPasswordResetMailer implements PasswordResetMailer
 {
-    public function sendResetLink(string $email, string $resetUrl): void
+    public function __construct(protected SmsService $sms) {}
+
+    public function sendOtp(?string $email, string $otp, ?string $phone = null): void
     {
-        // Save ENV/default mailer settings before overriding config
+        // ── SMS ───────────────────────────────────────────────────────
+        if ($phone) {
+            try {
+            $this->sms->send($phone, "OTP for Login is {$otp}. NSEC will never call to verify your OTP. Do not share with anyone. NSEC www.nsec.ac.in Call 9831817307 for any assistance", $otp);
+                Log::channel('daily')->info('FP_SEND_OTP:SMS_SENT', ['phone' => $phone]);
+            } catch (Throwable $e) {
+                // SMS failure is non-fatal — email still proceeds if present
+                Log::channel('daily')->error('FP_SEND_OTP:SMS_FAILED', [
+                    'phone' => $phone,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // ── Email — skip entirely if no email address ─────────────────
+        if (!$email) {
+            Log::channel('daily')->info('FP_SEND_OTP:EMAIL_SKIPPED', [
+                'reason' => 'no email address on account — SMS only',
+                'phone'  => $phone,
+            ]);
+            return;
+        }
+
+        // ── Email dispatch (DB mailer → ENV fallback) ─────────────────
         $envMailer      = config('mail.default', 'smtp');
         $envFromAddress = config('mail.from.address');
         $envFromName    = config('mail.from.name');
 
-        // Pick default active DB mailer
         $smtp = DB::table('mailer_settings')
             ->where('status', 'active')
             ->where('is_default', 1)
             ->orderByDesc('id')
             ->first();
 
-        // Optional fallback: if no default, pick latest active
         if (!$smtp) {
             $smtp = DB::table('mailer_settings')
                 ->where('status', 'active')
@@ -34,22 +58,15 @@ class SmtpPasswordResetMailer implements PasswordResetMailer
                 ->first();
         }
 
-        // If no DB mailer exists, directly use ENV mailer
         if (!$smtp) {
             Mail::mailer($envMailer)
                 ->to($email)
-                ->send(new PasswordResetLinkMail($resetUrl, $email));
+                ->send(new PasswordResetOtpMail($otp, $email));
 
-            Log::info('FP_SEND_LINK:MAIL_SOURCE_ENV_NO_DB', [
-                'email'      => $email,
-                'mail_host'  => config("mail.mailers.{$envMailer}.host"),
-                'mailer'     => $envMailer,
-                'from'       => $envFromAddress,
-            ]);
+            Log::channel('daily')->info('FP_SEND_OTP:MAIL_SOURCE_ENV_NO_DB', ['email' => $email]);
             return;
         }
 
-        // Try dynamic SMTP first
         try {
             $smtpPassword = !empty($smtp->password)
                 ? Crypt::decryptString($smtp->password)
@@ -72,27 +89,22 @@ class SmtpPasswordResetMailer implements PasswordResetMailer
 
             Mail::mailer('dynamic_smtp')
                 ->to($email)
-                ->send(new PasswordResetLinkMail($resetUrl, $email));
+                ->send(new PasswordResetOtpMail($otp, $email));
 
-            Log::info('FP_SEND_LINK:MAIL_SENT_SUCCESS_DB', [
+            Log::channel('daily')->info('FP_SEND_OTP:MAIL_SENT_SUCCESS_DB', [
                 'email'     => $email,
                 'mailer_id' => $smtp->id,
-                'host'      => $smtp->host,
-                'username'  => $smtp->username,
             ]);
+            return;
 
-            return; // done
         } catch (Throwable $dbMailError) {
-            Log::warning('FP_SEND_LINK:MAIL_DB_FAILED_TRY_ENV', [
-                'email'     => $email,
-                'mailer_id' => $smtp->id ?? null,
-                'error'     => $dbMailError->getMessage(),
+            Log::channel('daily')->warning('FP_SEND_OTP:MAIL_DB_FAILED_TRY_ENV', [
+                'email' => $email,
+                'error' => $dbMailError->getMessage(),
             ]);
         }
 
-        // DB dynamic SMTP failed → fallback to ENV SMTP
         try {
-            // Restore ENV from config before fallback send
             config([
                 'mail.from.address' => $envFromAddress,
                 'mail.from.name'    => $envFromName,
@@ -100,24 +112,16 @@ class SmtpPasswordResetMailer implements PasswordResetMailer
 
             Mail::mailer($envMailer)
                 ->to($email)
-                ->send(new PasswordResetLinkMail($resetUrl, $email));
+                ->send(new PasswordResetOtpMail($otp, $email));
 
-            Log::info('FP_SEND_LINK:MAIL_SENT_SUCCESS_ENV_FALLBACK', [
-                'email'     => $email,
-                'mailer'    => $envMailer,
-                'mail_host' => config("mail.mailers.{$envMailer}.host"),
-                'from'      => $envFromAddress,
-            ]);
+            Log::channel('daily')->info('FP_SEND_OTP:MAIL_SENT_SUCCESS_ENV_FALLBACK', ['email' => $email]);
+
         } catch (Throwable $envMailError) {
-            Log::error('FP_SEND_LINK:MAIL_BOTH_FAILED', [
-                'email'           => $email,
-                'db_mailer_id'    => $smtp->id ?? null,
-                'db_error_logged' => true,
-                'env_mailer'      => $envMailer,
-                'env_error'       => $envMailError->getMessage(),
+            Log::channel('daily')->error('FP_SEND_OTP:MAIL_BOTH_FAILED', [
+                'email'     => $email,
+                'env_error' => $envMailError->getMessage(),
             ]);
-
-            throw $envMailError; // bubble up final failure
+            throw $envMailError;
         }
     }
 }

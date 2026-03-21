@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Login — Unzip Examination</title>
+  <title>Login — TechnoHere - Netaji Subhas Engineering College</title>
 
   <meta name="csrf-token" content="{{ csrf_token() }}"/>
 
@@ -144,6 +144,18 @@
     z-index:1;
     max-width:min(560px, 100%);
   }
+  .ux-title2{
+  font-family:var(--font-head);
+  font-weight:700;
+  color:var(--ink);
+  text-align:center;
+ 
+  font-size:clamp(1.08rem, 1.9vw, 1.35rem);
+  margin-bottom: 10px;
+  position:relative;
+  z-index:1;
+  max-width:min(560px, 100%);
+}
   .ux-sub{
     text-align:center;
     color:var(--muted-color);
@@ -330,12 +342,11 @@
       <img src="{{ asset('/assets/media/images/web/logo.png') }}" alt="Unzip Examination">
     </div>
 
-    <h1 class="ux-title">Welcome to {{ config('app.name') }}    </h1>
-    <p class="ux-sub">
-  <strong>TechnoHere</strong><br>
-  An Initiative of<br>
-  <strong>Netaji Subhash Engineering College</strong>
-</p>
+    <h1 class="ux-title">TechnoHere</h1>
+    <p>
+  An Initiative of</p>
+   <h1 class="ux-title2">Netaji Subhas Engineering College</h1>
+
    
 
 

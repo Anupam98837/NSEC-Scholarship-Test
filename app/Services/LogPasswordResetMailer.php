@@ -1,5 +1,5 @@
 <?php
-// C:\xampp\htdocs\ForgotPassword\app\Services\LogPasswordResetMailer.php
+// app/Services/LogPasswordResetMailer.php
 
 namespace App\Services;
 
@@ -8,11 +8,12 @@ use Illuminate\Support\Facades\Log;
 
 class LogPasswordResetMailer implements PasswordResetMailer
 {
-    public function sendResetLink(string $email, string $resetUrl): void
+    public function sendOtp(?string $email, string $otp, ?string $phone = null): void
     {
-        Log::channel('daily')->info('PASSWORD_RESET_LINK', [
-            'email'     => $email,
-            'reset_url' => $resetUrl,
+        Log::channel('daily')->info('FP_OTP_LOG', [
+            'email' => $email,
+            'phone' => $phone,
+            'otp'   => $otp,   // DEV ONLY — never log OTP in production
         ]);
     }
 }

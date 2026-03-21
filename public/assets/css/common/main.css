@@ -105,7 +105,9 @@ h1,h2,h3,h4,h5{
 h1{ font-size: 1.6rem; }
 h2{ font-size: 1.28rem; }
 h3{ font-size: 1.1rem; }
-
+p{
+  margin-bottom: 5px;
+}
 .container, .container-fluid{ padding-left: 14px; padding-right: 14px; }
 .text-muted{ color: var(--muted-color)!important; }
 .divider{ height:1px; background: var(--line-soft); width:100%; }

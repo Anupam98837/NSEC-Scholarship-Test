@@ -75,7 +75,7 @@ class RegisterController extends Controller
      * STEP 3: Complete Registration
      * POST /api/register/complete
      */
-   public function completeRegistration(Request $request)
+public function completeRegistration(Request $request)
 {
     $validator = Validator::make($request->all(), [
         'name'         => ['required', 'string', 'max:255'],
@@ -84,12 +84,14 @@ class RegisterController extends Controller
     ]);
 
     if ($validator->fails()) {
-        return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        return response()->json([
+            'success' => false,
+            'errors'  => $validator->errors(),
+        ], 422);
     }
 
     $phone = $request->phone_number;
 
-    // Check OTP was verified
     if (!$this->otpService->isPhoneVerified($phone)) {
         return response()->json([
             'success' => false,
@@ -97,24 +99,75 @@ class RegisterController extends Controller
         ], 403);
     }
 
-    $this->otpService->clearVerified($phone);
-
     $now = now();
 
-    DB::table('users')->insert([
-        'uuid'            => (string) Str::uuid(),
-        'name'            => $request->name,
-        'slug'            => Str::slug($request->name) . '-' . uniqid(),
-        'email'           => $phone . '@placeholder.local',
-        'phone_number'    => $phone,
-        'password'        => Hash::make($request->password),
-        'role'            => 'student',
-        'role_short_form' => 'STD',
-        'status'          => 'active',
-        'created_at_ip'   => $request->ip(),
-        'created_at'      => $now,
-        'updated_at'      => $now,
-    ]);
+    // Auto assign these quiz IDs after registration
+    $autoQuizIds = [26, 29, 24];
+    $autoQuizIds = array_values(array_unique(array_map('intval', $autoQuizIds)));
+
+    DB::transaction(function () use ($request, $phone, $now, $autoQuizIds) {
+        $userId = DB::table('users')->insertGetId([
+            'uuid'            => (string) Str::uuid(),
+            'name'            => $request->name,
+            'slug'            => Str::slug($request->name) . '-' . uniqid(),
+            'email'           => null,
+            'phone_number'    => $phone,
+            'password'        => Hash::make($request->password),
+            'role'            => 'student',
+            'role_short_form' => 'STD',
+            'status'          => 'active',
+            'created_at_ip'   => $request->ip(),
+            'created_at'      => $now,
+            'updated_at'      => $now,
+        ]);
+
+        if (!empty($autoQuizIds)) {
+            // Keep `quizz` only if that is your actual table name.
+            // If your table is `quizzes`, replace `quizz` with `quizzes`.
+            $validQuizIds = DB::table('quizz')
+                ->whereIn('id', $autoQuizIds)
+                ->pluck('id')
+                ->toArray();
+
+            foreach ($validQuizIds as $quizId) {
+                $existingAssignment = DB::table('user_quiz_assignments')
+                    ->where('user_id', $userId)
+                    ->where('quiz_id', $quizId)
+                    ->first();
+
+                if ($existingAssignment) {
+                    $updateData = [
+                        'status'      => 'active',
+                        'assigned_by' => $userId,
+                        'assigned_at' => $now,
+                        'updated_at'  => $now,
+                    ];
+
+                    if (empty($existingAssignment->assignment_code)) {
+                        $updateData['assignment_code'] = strtoupper(Str::random(8));
+                    }
+
+                    DB::table('user_quiz_assignments')
+                        ->where('id', $existingAssignment->id)
+                        ->update($updateData);
+                } else {
+                    DB::table('user_quiz_assignments')->insert([
+                        'uuid'            => (string) Str::uuid(),
+                        'user_id'         => $userId,
+                        'quiz_id'         => $quizId,
+                        'assignment_code' => strtoupper(Str::random(8)),
+                        'status'          => 'active',
+                        'assigned_by'     => $userId,
+                        'assigned_at'     => $now,
+                        'created_at'      => $now,
+                        'updated_at'      => $now,
+                    ]);
+                }
+            }
+        }
+    });
+
+    $this->otpService->clearVerified($phone);
 
     return response()->json([
         'success' => true,

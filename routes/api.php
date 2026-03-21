@@ -51,10 +51,13 @@ Route::get('/profile', [UserController::class, 'getProfile']);
 
 // Users Routes
 
-Route::prefix('auth/forgot-password')->group(function () {
-    Route::post('send-link', [ForgotPasswordController::class, 'sendLink']);
-    Route::post('reset',     [ForgotPasswordController::class, 'resetPassword']);
-});
+// Route::prefix('auth/forgot-password')->group(function () {
+//     Route::post('send-link', [ForgotPasswordController::class, 'sendLink']);
+//     Route::post('reset',     [ForgotPasswordController::class, 'resetPassword']);
+// });
+
+Route::post('/auth/forgot-password/send-otp', [ForgotPasswordController::class, 'sendOtp']);
+Route::post('/auth/forgot-password/reset',    [ForgotPasswordController::class, 'resetPassword']);
 
 // Read-only (lists + show) – allow exam staff + admins
 Route::middleware(['checkRole:examiner,admin,super_admin,academic_counsellor'])->group(function () {

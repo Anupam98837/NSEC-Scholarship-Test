@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Register — Unzip Examination</title>
+  <title>Register — TechnoHere - Netaji Subhas Engineering College</title>
 
   <meta name="csrf-token" content="{{ csrf_token() }}"/>
 
@@ -95,7 +95,18 @@
     z-index:1;
     max-width:min(560px, 100%);
     }
-
+.ux-title2{
+  font-family:var(--font-head);
+  font-weight:700;
+  color:var(--ink);
+  text-align:center;
+ 
+  font-size:clamp(1.08rem, 1.9vw, 1.35rem);
+  margin-bottom: 10px;
+  position:relative;
+  z-index:1;
+  max-width:min(560px, 100%);
+}
     .ux-sub{
       text-align:center;
       color:var(--muted-color);
@@ -452,8 +463,11 @@
       <img src="{{ asset('/assets/media/images/web/logo.png') }}" alt="Unzip Examination">
     </div>
 
-    <h1 class="ux-title">Student Registration</h1>
-    <p class="ux-sub">Create your account to proceed.</p>
+   <h1 class="ux-title">TechnoHere</h1>
+    <p>
+  An Initiative of</p>
+   <h1 class="ux-title2">Netaji Subhas Engineering College</h1>
+
 
     <form class="ux-card" id="ux_form" novalidate>
       <span class="ux-float-chip"><i class="fa-solid fa-shield-halved me-1"></i>Secure • OTP verified</span>
@@ -595,7 +609,8 @@
     otpSent: false,
     phoneVerified: false,
     verificationToken: '',
-    verifiedPhone: ''
+    verifiedPhone: '',
+    resendInterval: null
   };
 
   const form       = document.getElementById('ux_form');
@@ -627,6 +642,38 @@
   function normalizeOtp(v){ return String(v || '').replace(/\D/g, '').slice(0, 6); }
   function validPhone(v){ const d = normalizePhone(v); return d.length >= 10 && d.length <= 15; }
   function validOtp(v){ const d = normalizeOtp(v); return d.length >= 4 && d.length <= 6; }
+  function formatCountdown(secs) {
+    if (secs >= 60) {
+      const m = Math.floor(secs / 60);
+      const s = secs % 60;
+      return `(${m}m ${s.toString().padStart(2, '0')}s)`;
+    }
+    return `(${secs}s)`;
+  }
+
+  function startResendCountdown(seconds) {
+    sendOtpBtn.disabled = true;
+    clearInterval(state.resendInterval);
+
+    if (seconds >= 3600) {
+      sendOtpBtn.textContent = 'Try tomorrow';
+      return;
+    }
+
+    let secs = seconds;
+    sendOtpBtn.textContent = formatCountdown(secs);
+
+    state.resendInterval = setInterval(() => {
+      secs--;
+      if (secs <= 0) {
+        clearInterval(state.resendInterval);
+        sendOtpBtn.disabled     = false;
+        sendOtpBtn.textContent  = 'Resend';
+      } else {
+        sendOtpBtn.textContent = formatCountdown(secs);
+      }
+    }, 1000);
+  }
 
   function showAlert(kind, msg){
     alertEl.classList.remove('d-none','alert-danger','alert-success','alert-warning');
@@ -702,9 +749,11 @@
 
     if(hideOtpBlock){
       state.otpSent = false;
+      clearInterval(state.resendInterval);
       otpBlock.classList.add('d-none');
       otpIn.value = '';
-      sendOtpBtn.innerHTML = 'OTP';
+      sendOtpBtn.disabled   = false;
+      sendOtpBtn.textContent = 'OTP';
     }
 
     btn.disabled = true;
@@ -756,9 +805,16 @@
         showAlert('warn', data?.message || 'Please check the phone number.');
         return;
       }
-      if(!res.ok){ showAlert('error', data?.message || data?.error || 'Failed to send OTP.'); return; }
-
-      state.otpSent = true;
+if(!res.ok){
+        if(res.status === 429){
+          startResendCountdown(data?.retry_after ?? 300);
+          showAlert('warn', data?.message || 'Please wait before requesting another OTP.');
+          return;
+        }
+        showAlert('error', data?.message || data?.error || 'Failed to send OTP.');
+        return;
+      }
+     state.otpSent = true;
       state.phoneVerified = false;
       state.verificationToken = data?.verification_token || data?.token || data?.session_id || '';
       verificationTokenEl.value = state.verificationToken || '';
@@ -767,10 +823,13 @@
       otpIn.value = '';
       otpIn.focus();
       showAlert('success', data?.message || 'OTP sent successfully.');
+      startResendCountdown(data?.retry_after ?? 120);
     }catch(err){
       showAlert('error', 'Network error while sending OTP.');
-    }finally{
-      setSendOtpBusy(false);
+   }finally{
+      if (!state.resendInterval && !sendOtpBtn.disabled) {
+        setSendOtpBusy(false);
+      }
     }
   });
 

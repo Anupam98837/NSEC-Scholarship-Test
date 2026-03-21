@@ -80,7 +80,19 @@
     .opt{border-radius:12px;border:1px solid var(--line-soft,#e5e7eb);padding:.65rem .75rem;margin-bottom:.35rem;background:var(--surface,#fff);cursor:pointer;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}
     .opt:hover{background:var(--page-hover,#f7f8fc);border-color:var(--accent-color,#4f46e5);box-shadow:0 6px 16px rgba(15,23,42,.05)}
     .opt input.form-check-input{margin-top:0;cursor:pointer}
-    .opt .form-check-label{cursor:pointer;font-size:.92rem}
+    .opt.form-check{align-items:flex-start!important}
+.opt input.form-check-input{margin-top:.18rem;cursor:pointer;flex:0 0 auto}
+.opt .form-check-label{
+  cursor:pointer;
+  font-size:.92rem;
+  line-height:1.55;
+  white-space:normal;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+  flex:1 1 auto;
+  min-width:0;
+  display:block;
+}
 
     .fib-underline{display:inline-block;min-width:90px;border-bottom:2px solid #cbd5e1;margin:0 .22rem .2rem .22rem}
     .fib-fields .form-control{height:40px;border-radius:10px}
@@ -98,8 +110,38 @@
     .intro-body li{margin:4px 0}
 
     /* Fixed-size images inside answer options */
-    .opt .form-check-label img{width:220px !important;height:auto !important;max-width:100% !important;display:block;margin-top:6px;border-radius:8px;object-fit:contain;}
-    @media (max-width:576px){.opt .form-check-label img{width:160px !important;}}
+    .question-title,
+.question-desc,
+.intro-body{
+  word-break:break-word;
+  overflow-wrap:anywhere;
+}
+
+#question-wrap .question-title img,
+#question-wrap .question-desc img,
+#question-wrap .form-check-label img,
+#question-wrap .fib-fields img,
+#examIntroModal .intro-body img{
+  width:170px !important;
+  height:120px !important;
+  max-width:100% !important;
+  object-fit:contain !important;
+  display:inline-block !important;
+  vertical-align:middle !important;
+  margin:4px 8px 4px 0 !important;
+  border-radius:8px !important;
+}
+
+@media (max-width:576px){
+  #question-wrap .question-title img,
+  #question-wrap .question-desc img,
+  #question-wrap .form-check-label img,
+  #question-wrap .fib-fields img,
+  #examIntroModal .intro-body img{
+    width:130px !important;
+    height:90px !important;
+  }
+}
   </style>
 </head>
 <body>
@@ -769,7 +811,7 @@ function renderQuestion(){
     <div class="d-flex align-items-start justify-content-between gap-3">
       <div class="flex-grow-1">
         <div class="question-title mb-1">Q${currentIndex + 1}. ${titleHTML}</div>
-        ${descHTML ? `<div class="small text-muted mb-2">${descHTML}</div>` : ``}
+       ${descHTML ? `<div class="small text-muted mb-2 question-desc">${descHTML}</div>` : ``}
         <div class="question-meta d-flex align-items-center flex-wrap gap-1">
           Marks: <b>${q.question_mark ?? 1}</b>
           <span class="mx-1">•</span>
