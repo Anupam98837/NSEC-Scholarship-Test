@@ -233,7 +233,7 @@
 <aside id="sidebar" class="w3-sidebar" aria-label="Sidebar">
   <div class="w3-sidebar-head">
     <a href="{{ $dashboardUrl }}" class="w3-brand">
-      <img id="logo" src="{{ asset('/assets/media/images/web/logo1.jpg
+      <img id="logo" src="{{ asset('/assets/media/images/web/logo.png
       ') }}" alt="Unzip Examination">
     </a>
   </div>
@@ -572,7 +572,7 @@
 
     <div class="ms-auto d-flex align-items-center gap-2">
       <!-- Theme toggle (desktop only) -->
-       <div class="theme d-none">
+       <div class="theme">
        <button id="btnTheme" class="w3-icon-btn js-theme-btn d-none d-lg-inline-grid" aria-label="Toggle theme" title="Toggle theme">
         <i class="fa-regular fa-moon" id="themeIcon"></i>
       </button>

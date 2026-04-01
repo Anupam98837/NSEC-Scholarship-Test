@@ -557,6 +557,10 @@
         </div>
 
         <div class="er-actions">
+          <button type="button" class="btn btn-light btn-sm" onclick="history.back()">
+    <i class="fa-solid fa-arrow-left"></i> Back
+  </button>
+
           <button type="button" class="btn btn-light btn-sm d-none" id="erHtmlExport">
             <i class="fa-regular fa-file-code"></i> Export HTML
           </button>

@@ -121,9 +121,9 @@ Route::middleware('checkRole:admin,super_admin,student,examiner')
     Route::match(['put','patch'],'/{key}', [QuizzController::class, 'update'])->name('update');
     
 });
-        Route::get('exam/results/{resultKey}',            [ExamController::class, 'resultDetail']);
-        Route::get('exam/results/{resultId}/export',     [ExamController::class, 'export']);
 
+Route::get('exam/results/{resultId}/export',     [ExamController::class, 'export']);
+Route::get('exam/results/{resultKey}',            [ExamController::class, 'resultDetail']);
 // Exam Routes 
 Route::middleware(['checkRole:student,admin,examiner,super_admin'])
     ->prefix('exam')
@@ -685,4 +685,5 @@ Route::middleware('checkRole')->group(function () {
     Route::get('/my-email-status', [StudentResultController::class, 'myEmailStatus']);
     Route::post('/student-results/send-email-otp',   [EmailOtpController::class, 'send']);
     Route::post('/student-results/verify-email-otp', [EmailOtpController::class, 'verify']);
+    Route::post('/student-results/send-result-email', [EmailOtpController::class, 'sendResultEmail']);
 });
