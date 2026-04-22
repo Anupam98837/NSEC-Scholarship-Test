@@ -146,6 +146,7 @@ Route::middleware(['checkRole:student,admin,examiner,super_admin'])
     ->group(function () {
 
         // student exam flow
+        Route::get ('/my-active-attempt',            [ExamController::class, 'myActiveAttempt']);
         Route::post('/quizzes/{quizKey}/start',   [ExamController::class, 'start']);
         Route::get ('/attempts/{attempt}/questions', [ExamController::class, 'questions']);
         Route::post('/attempts/{attempt}/answer',    [ExamController::class, 'saveAnswer']);

@@ -307,7 +307,12 @@ function typeset(el){
 const $  = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 
-const token = sessionStorage.student_token || sessionStorage.token || '';
+const token =
+  sessionStorage.student_token ||
+  sessionStorage.token ||
+  localStorage.student_token ||
+  localStorage.token ||
+  '';
 const QUIZ_KEY =
   (document.querySelector('meta[name="quiz-key"]')?.content || '').trim() ||
   new URLSearchParams(location.search).get('quiz') || '';
@@ -333,6 +338,14 @@ let activeStartMs = null;
 
 let EXAM_STARTED      = false;
 let AUTO_SUBMIT_FIRED = false;
+let syncTimer         = null;
+let syncInFlight      = false;
+let syncQueued        = false;
+let lastSyncedState   = '';
+let liveRefreshInFlight = false;
+let lastLiveRefreshAt   = 0;
+let liveStatusTimer     = null;
+let remoteCloseHandled  = false;
 
 /* ================== Utilities ================== */
 
@@ -403,6 +416,20 @@ function isAttemptMissingError(e){
     (e?.status === 404 && (msg.includes('attempt') || payloadMsg.includes('attempt'))) ||
     msg.includes('attempt not found') ||
     payloadMsg.includes('attempt not found')
+  );
+}
+
+function isAttemptClosedError(e){
+  const msg        = String(e?.message || '').toLowerCase();
+  const payloadMsg = String(e?.payload?.message || '').toLowerCase();
+  return (
+    e?.status === 409 &&
+    (
+      msg.includes('attempt is not running') ||
+      payloadMsg.includes('attempt is not running') ||
+      msg.includes('submitted') ||
+      payloadMsg.includes('submitted')
+    )
   );
 }
 
@@ -638,6 +665,8 @@ function clearAllExamClientState(){
   try{
     if (timerHandle)    { clearInterval(timerHandle);  timerHandle    = null; }
     if (cacheSaveTimer) { clearTimeout(cacheSaveTimer); cacheSaveTimer = null; }
+    if (syncTimer)      { clearTimeout(syncTimer);      syncTimer      = null; }
+    if (liveStatusTimer){ clearInterval(liveStatusTimer); liveStatusTimer = null; }
 
     if (QUIZ_KEY){
       localStorage.removeItem(STORAGE_ATTEMPT_KEY);
@@ -657,7 +686,338 @@ function clearAllExamClientState(){
     activeQid         = null;
     activeStartMs     = null;
     AUTO_SUBMIT_FIRED = false;
+    syncInFlight      = false;
+    syncQueued        = false;
+    lastSyncedState   = '';
+    remoteCloseHandled = false;
   }catch(_){}
+}
+
+function clearExamCacheOnly({ keepAttempt = true } = {}){
+  try{
+    localStorage.removeItem(STORAGE_CACHE_KEY);
+    sessionStorage.removeItem(STORAGE_CACHE_KEY);
+
+    if (!keepAttempt){
+      localStorage.removeItem(STORAGE_ATTEMPT_KEY);
+      sessionStorage.removeItem(STORAGE_ATTEMPT_KEY);
+    }
+  }catch(_){}
+}
+
+function currentQuestionId(){
+  const q = questions[currentIndex];
+  return q?.question_id ? Number(q.question_id) : (activeQid ? Number(activeQid) : null);
+}
+
+function normalizeSelectionMap(src){
+  const out = {};
+  if (!src || typeof src !== 'object') return out;
+
+  Object.entries(src).forEach(([qid, value]) => {
+    const id = Number(qid);
+    if (!Number.isFinite(id) || id <= 0) return;
+    out[id] = Array.isArray(value) ? value.slice() : value;
+  });
+
+  return out;
+}
+
+function normalizeBooleanMap(src){
+  const out = {};
+  if (!src || typeof src !== 'object') return out;
+
+  Object.entries(src).forEach(([qid, value]) => {
+    const id = Number(qid);
+    if (!Number.isFinite(id) || id <= 0) return;
+    out[id] = !!value;
+  });
+
+  return out;
+}
+
+function normalizeTimeSpentMap(src){
+  const out = {};
+  if (!src || typeof src !== 'object') return out;
+
+  Object.entries(src).forEach(([qid, value]) => {
+    const id = Number(qid);
+    if (!Number.isFinite(id) || id <= 0) return;
+    out[id] = Math.max(0, Number(value || 0));
+  });
+
+  return out;
+}
+
+function ensureFibSelections(){
+  questions.forEach(q => {
+    if (String(q.question_type).toLowerCase() !== 'fill_in_the_blank') return;
+    const cur = selections[q.question_id];
+    if (cur == null) selections[q.question_id] = [];
+    else if (!Array.isArray(cur)){
+      const val = String(cur).trim();
+      selections[q.question_id] = val ? [val] : [];
+    }
+  });
+}
+
+function applyServerAttemptPack(pack){
+  if (!pack || typeof pack !== 'object') return;
+
+  const packQuestions = Array.isArray(pack.questions) ? pack.questions : [];
+  if (packQuestions.length) questions = packQuestions;
+
+  if (Object.prototype.hasOwnProperty.call(pack, 'selections')){
+    selections = normalizeSelectionMap(pack.selections);
+  }
+
+  const resume = (pack.resume && typeof pack.resume === 'object') ? pack.resume : {};
+  reviews      = normalizeBooleanMap(resume.reviews);
+  visited      = normalizeBooleanMap(resume.visited);
+  timeSpentSec = normalizeTimeSpentMap(resume.time_spent_sec);
+
+  const resumeIndex = Number(resume.current_index);
+  const resumeQid   = Number(resume.current_question_id || 0);
+
+  if (Number.isFinite(resumeIndex)) {
+    currentIndex = Math.max(0, resumeIndex);
+  } else if (resumeQid > 0) {
+    const idx = questions.findIndex(q => Number(q.question_id) === resumeQid);
+    if (idx >= 0) currentIndex = idx;
+  }
+
+  if (pack?.attempt?.server_end_at) {
+    serverEndAt = pack.attempt.server_end_at;
+  }
+
+  ensureFibSelections();
+  if (questions.length) {
+    currentIndex = Math.min(Math.max(0, currentIndex), questions.length - 1);
+  } else {
+    currentIndex = 0;
+  }
+
+  cacheSave();
+  lastSyncedState = JSON.stringify({
+    currentIndex,
+    selections,
+    reviews,
+    visited,
+    timeSpentSec
+  });
+}
+
+async function fetchAttemptQuestionsFresh(attemptUuid){
+  const data = await api(`/api/exam/attempts/${encodeURIComponent(attemptUuid)}/questions`, {
+    method:'GET',
+    timeoutMs:20000,
+    cache:'no-store',
+    headers:{
+      'Cache-Control':'no-cache, no-store, must-revalidate',
+      'Pragma':'no-cache'
+    }
+  });
+
+  return data.data || data;
+}
+
+function rebuildExamUiFromLiveState(){
+  if (!questions.length) return;
+
+  currentIndex = Math.min(Math.max(0, currentIndex), questions.length - 1);
+  buildNavigator();
+  renderQuestion();
+
+  const q = questions[currentIndex];
+  if (q?.question_id) enterQuestion(q.question_id);
+
+  if (parseServerDate(serverEndAt)){
+    startTimerFromServerEnd();
+  } else {
+    $('#time-left').textContent = '--:--';
+  }
+}
+
+async function handleRemoteAttemptClosure(){
+  if (remoteCloseHandled) return;
+  remoteCloseHandled = true;
+
+  clearAllExamClientState();
+  await Swal.fire({
+    icon:'info',
+    title:'Exam Already Submitted',
+    text:'This exam was submitted from another device, so this screen has been closed automatically.',
+    confirmButtonText:'Go to Dashboard',
+    allowOutsideClick:false,
+    allowEscapeKey:false
+  });
+  window.location.replace('/dashboard');
+}
+
+async function refreshAttemptFromLive({ force = false, rebuildUi = false } = {}){
+  if (!EXAM_STARTED || isSubmitting) return false;
+
+  const au = ensureAttemptUuid();
+  if (!au) return false;
+
+  const now = Date.now();
+  if (liveRefreshInFlight) return false;
+  if (!force && now - lastLiveRefreshAt < 1200) return false;
+
+  if (syncTimer){
+    clearTimeout(syncTimer);
+    syncTimer = null;
+  }
+  syncQueued = false;
+
+  liveRefreshInFlight = true;
+
+  try{
+    const pack = await fetchAttemptQuestionsFresh(au);
+    clearExamCacheOnly({ keepAttempt:true });
+    applyServerAttemptPack(pack);
+    lastLiveRefreshAt = Date.now();
+
+    if (rebuildUi){
+      rebuildExamUiFromLiveState();
+    }
+
+    return true;
+  }catch(e){
+    if (isAttemptClosedError(e)){
+      await handleRemoteAttemptClosure();
+      return false;
+    }
+
+    if (isAttemptMissingError(e) || e?.status === 401 || e?.status === 403){
+      clearAllExamClientState();
+      await Swal.fire({
+        icon:'info',
+        title:'Exam Not Available',
+        text:'This attempt is no longer active on the server.',
+        confirmButtonText:'Go to Dashboard',
+        allowOutsideClick:false,
+        allowEscapeKey:false
+      });
+      window.location.replace('/dashboard');
+      return false;
+    }
+
+    console.warn('Live refresh warning:', e);
+    return false;
+  }finally{
+    liveRefreshInFlight = false;
+  }
+}
+
+function buildDraftPayload(){
+  const answers = questions.map(q => ({
+    question_id: Number(q.question_id),
+    selected: selections[Number(q.question_id)] ?? null,
+    time_spent_sec: Number(timeSpentSec[Number(q.question_id)] || 0)
+  }));
+
+  return {
+    answers,
+    current_index: currentIndex,
+    current_question_id: currentQuestionId(),
+    selections,
+    reviews,
+    visited,
+    time_spent_sec: timeSpentSec,
+    saved_at: new Date().toISOString()
+  };
+}
+
+function buildDraftSignature(payload){
+  return JSON.stringify({
+    current_index: payload.current_index,
+    current_question_id: payload.current_question_id,
+    selections: payload.selections,
+    reviews: payload.reviews,
+    visited: payload.visited,
+    time_spent_sec: payload.time_spent_sec
+  });
+}
+
+async function flushDraftSync({ force = false } = {}){
+  if (!EXAM_STARTED || isSubmitting) return;
+
+  const au = ensureAttemptUuid();
+  if (!au || !questions.length) return;
+
+  const payload   = buildDraftPayload();
+  const signature = buildDraftSignature(payload);
+  if (!force && signature === lastSyncedState) return;
+
+  if (syncTimer){
+    clearTimeout(syncTimer);
+    syncTimer = null;
+  }
+
+  if (syncInFlight){
+    syncQueued = true;
+    return;
+  }
+
+  syncInFlight = true;
+
+  try{
+    const res = await api(`/api/exam/attempts/${encodeURIComponent(au)}/bulk-answer`, {
+      method:'POST',
+      body: JSON.stringify(payload),
+      timeoutMs: 15000
+    });
+
+    if (res?.stale_ignored) {
+      await refreshAttemptFromLive({ force:true, rebuildUi:true });
+      return;
+    }
+
+    if (res?.attempt?.server_end_at) serverEndAt = res.attempt.server_end_at;
+    lastSyncedState = signature;
+  }catch(e){
+    if (isAttemptClosedError(e)){
+      await handleRemoteAttemptClosure();
+      return;
+    }
+    console.warn('Draft sync warning:', e);
+  }finally{
+    syncInFlight = false;
+    if (syncQueued){
+      syncQueued = false;
+      queueDraftSync({ immediate:true, force:true });
+    }
+  }
+}
+
+function queueDraftSync({ immediate = false, force = false } = {}){
+  if (!EXAM_STARTED || isSubmitting) return;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => flushDraftSync({ force }), immediate ? 0 : 900);
+}
+
+function sendDraftSyncKeepalive(){
+  if (!EXAM_STARTED || isSubmitting) return;
+
+  const au = ensureAttemptUuid();
+  if (!au || !questions.length) return;
+
+  const payload = buildDraftPayload();
+  const signature = buildDraftSignature(payload);
+
+  fetch(`/api/exam/attempts/${encodeURIComponent(au)}/bulk-answer`, {
+    method:'POST',
+    keepalive:true,
+    headers:{
+      'Accept':'application/json',
+      'Content-Type':'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  }).catch(() => {});
+
+  lastSyncedState = signature;
 }
 
 /* ================== Timer ================== */
@@ -760,6 +1120,7 @@ function leaveQuestion(qid){
   activeQid     = null;
   activeStartMs = null;
   cacheSaveDebounced();
+  queueDraftSync();
 }
 
 /* ================== Render ================== */
@@ -786,8 +1147,10 @@ function renderQuestion(){
   const q = questions[currentIndex];
   if (!q) return;
 
+  const wasVisited = !!visited[q.question_id];
   visited[q.question_id] = true;
   cacheSaveDebounced();
+  if (!wasVisited) queueDraftSync();
 
   const wrap    = $('#question-wrap');
   const rawType = String(q.question_type || '').toLowerCase();
@@ -867,7 +1230,7 @@ function renderQuestion(){
     $$('#options input[data-fib-index]').forEach(inp => {
       const updateLocal = () => {
         selections[q.question_id] = $$('#options input[data-fib-index]').map(i => i.value || '');
-        cacheSaveDebounced(); updateProgress(); refreshNav();
+        cacheSaveDebounced(); updateProgress(); refreshNav(); queueDraftSync();
       };
       inp.addEventListener('input', updateLocal);
       inp.addEventListener('blur',  updateLocal);
@@ -876,7 +1239,7 @@ function renderQuestion(){
     $$('#options input').forEach(inp => {
       inp.addEventListener('change', () => {
         selections[q.question_id] = collectSelectionFor(q);
-        cacheSaveDebounced(); updateProgress(); refreshNav();
+        cacheSaveDebounced(); updateProgress(); refreshNav(); queueDraftSync();
       });
     });
   }
@@ -923,6 +1286,7 @@ function navigateTo(targetIdx){
 
   const nextQ = questions[currentIndex];
   if (nextQ?.question_id) enterQuestion(nextQ.question_id);
+  queueDraftSync({ immediate:true, force:true });
 }
 
 /* ================== Actions ================== */
@@ -941,6 +1305,7 @@ function onToggleReview(){
   reviews[q.question_id] = !reviews[q.question_id];
   cacheSaveDebounced();
   renderQuestion();
+  queueDraftSync();
 }
 
 /* ================== Submit ================== */
@@ -993,20 +1358,19 @@ async function doSubmit(auto){
     const curQ = questions[currentIndex];
     if (curQ?.question_id) leaveQuestion(curQ.question_id);
 
-    const answers = questions.map(q => ({
-      question_id:    Number(q.question_id),
-      selected:       (selections[Number(q.question_id)] ?? null),
-      time_spent_sec: Number(timeSpentSec[Number(q.question_id)] || 0)
-    }));
-
     // Bulk answer — non-fatal if attempt already closed server-side
     try{
+      const draftPayload = buildDraftPayload();
       await api(`/api/exam/attempts/${encodeURIComponent(au)}/bulk-answer`, {
         method:'POST',
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify(draftPayload),
         timeoutMs: 25000
       });
     }catch(bulkErr){
+      if (isAttemptClosedError(bulkErr)) {
+        await handleRemoteAttemptClosure();
+        return;
+      }
       if (isAttemptMissingError(bulkErr)) throw bulkErr; // let outer catch handle it
       console.warn('Bulk answer warning (non-fatal):', bulkErr);
     }
@@ -1037,6 +1401,11 @@ async function doSubmit(auto){
     Swal.close();
 
     // FIX 7: Graceful handling of "attempt not found" — don't show generic error
+    if (isAttemptClosedError(e)){
+      await handleRemoteAttemptClosure();
+      return;
+    }
+
     if (isAttemptMissingError(e)){
       clearAllExamClientState();
       await Swal.fire({
@@ -1103,27 +1472,19 @@ async function bootExam(){
 
     const hasCache = cacheLoad();
 
-    // FIX 8: Validate existing attempt with server before trusting cache
+    let serverPack = null;
+
+    // Validate existing attempt with server before trusting cache
     if (ATTEMPT_UUID){
       try{
-        const data = await api(`/api/exam/attempts/${encodeURIComponent(ATTEMPT_UUID)}/questions`, {
-          method:'GET', timeoutMs:20000
-        });
-        const pack = data.data || data;
-
-        if (pack?.attempt?.server_end_at) serverEndAt = pack.attempt.server_end_at;
-
-        if (!hasCache || !questions.length){
-          questions  = pack.questions  || [];
-          selections = pack.selections || {};
-        }
+        serverPack = await fetchAttemptQuestionsFresh(ATTEMPT_UUID);
+        clearExamCacheOnly({ keepAttempt:true });
+        applyServerAttemptPack(serverPack);
 
         // If time already expired, clear everything and start fresh
         const left = computeTimeLeft();
         if (left !== null && left <= 0){
           clearAllExamClientState();
-        } else {
-          cacheSave();
         }
       }catch(e){
         if (isAttemptMissingError(e) || e?.status === 401 || e?.status === 403){
@@ -1150,29 +1511,11 @@ async function bootExam(){
       cacheSave();
     }
 
-    if (!hasCache || !questions.length){
-      const data = await api(`/api/exam/attempts/${encodeURIComponent(ATTEMPT_UUID)}/questions`, {
-        method:'GET', timeoutMs:20000
-      });
-      const pack = data.data || data;
-
-      questions  = pack.questions  || [];
-      selections = pack.selections || {};
-
-      if (pack?.attempt?.server_end_at) serverEndAt = pack.attempt.server_end_at;
-
-      questions.forEach(q => {
-        if (String(q.question_type).toLowerCase() === 'fill_in_the_blank'){
-          const cur = selections[q.question_id];
-          if (cur == null) selections[q.question_id] = [];
-          else if (!Array.isArray(cur)){
-            const val = String(cur).trim();
-            selections[q.question_id] = val ? [val] : [];
-          }
-        }
-      });
-
-      currentIndex = 0;
+    if (!serverPack || !questions.length){
+      serverPack = await fetchAttemptQuestionsFresh(ATTEMPT_UUID);
+      clearExamCacheOnly({ keepAttempt:true });
+      applyServerAttemptPack(serverPack);
+    } else if (hasCache) {
       cacheSave();
     }
 
@@ -1202,8 +1545,44 @@ async function bootExam(){
         const cur = questions[currentIndex];
         if (cur?.question_id) leaveQuestion(cur.question_id);
         cacheSave();
+        sendDraftSyncKeepalive();
+      });
+
+      window.addEventListener('pagehide', () => {
+        const cur = questions[currentIndex];
+        if (cur?.question_id) leaveQuestion(cur.question_id);
+        cacheSave();
+        sendDraftSyncKeepalive();
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden'){
+          const cur = questions[currentIndex];
+          if (cur?.question_id) leaveQuestion(cur.question_id);
+          cacheSave();
+          sendDraftSyncKeepalive();
+          return;
+        }
+
+        refreshAttemptFromLive({ force:true, rebuildUi:true });
+      });
+
+      window.addEventListener('focus', () => {
+        if (document.visibilityState === 'hidden') return;
+        refreshAttemptFromLive({ rebuildUi:true });
+      });
+
+      window.addEventListener('pageshow', () => {
+        if (document.visibilityState === 'hidden') return;
+        refreshAttemptFromLive({ force:true, rebuildUi:true });
       });
     }
+
+    if (liveStatusTimer) clearInterval(liveStatusTimer);
+    liveStatusTimer = setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      refreshAttemptFromLive();
+    }, 15000);
 
     // FIX 9: Only start timer when serverEndAt is valid
     // Placed AFTER __bound guard so submit button is always wired before timer can fire

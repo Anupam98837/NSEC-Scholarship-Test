@@ -5,6 +5,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class QuizzResultController extends Controller
@@ -287,6 +288,9 @@ class QuizzResultController extends Controller
             'r.percentage',
             'r.attempt_number',
             'r.publish_to_student',
+            Schema::hasColumn('quizz_results', 'seen_by_student')
+                ? DB::raw('COALESCE(r.seen_by_student, 0) as seen_by_student')
+                : DB::raw('0 as seen_by_student'),
             'r.created_at as result_created_at',
 
             'a.uuid as attempt_uuid',
@@ -365,6 +369,7 @@ class QuizzResultController extends Controller
                 'percentage'         => (float) ($r->percentage ?? 0),
                 'attempt_number'     => (int) ($r->attempt_number ?? 0),
                 'publish_to_student' => (int) ($r->publish_to_student ?? 0),
+                'seen_by_student'    => (int) ($r->seen_by_student ?? 0),
                 'created_at'         => $r->result_created_at ? Carbon::parse($r->result_created_at)->toDateTimeString() : null,
             ],
         ];

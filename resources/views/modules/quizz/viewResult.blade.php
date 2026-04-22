@@ -924,7 +924,7 @@
         wrongCountEl.textContent   = wrongQ + " wrong";
         skippedCountEl.textContent = skippedQ + " not attempted";
 
-        attemptIdEl.textContent   = attempt.attempt_id || attempt.uuid || attempt.id || "-";
+        attemptIdEl.textContent   = attempt.id || attempt.attempt_id || attempt.uuid || "-";
         submittedAtEl.textContent = formatDateTime(submittedAt);
 
         // --- Question-wise cards ---

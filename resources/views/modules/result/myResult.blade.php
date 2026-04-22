@@ -246,11 +246,8 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
   {{-- Tabs --}}
   <div class="panel mb-2">
     <div class="sr-tabbar" id="srTabbar">
-      <button type="button" class="sr-tab active" data-type="quizz"><i class="fa fa-clipboard-question"></i> Quizz</button>
-      <button type="button" class="sr-tab d-none" data-type="door_game"><i class="fa fa-door-open"></i> Door</button>
-      <button type="button" class="sr-tab d-none" data-type="bubble_game"><i class="fa fa-circle"></i> Bubble</button>
-      <button type="button" class="sr-tab d-none" data-type="path_game"><i class="fa fa-route"></i> Path</button>
-      <button type="button" class="sr-tab d-none" data-type=""><i class="fa fa-layer-group"></i> All</button>
+      <button type="button" class="sr-tab active" data-seen="not_seen"><i class="fa-regular fa-eye-slash"></i> Not Seen</button>
+      <button type="button" class="sr-tab" data-seen="seen"><i class="fa-regular fa-eye"></i> Seen</button>
     </div>
   </div>
 
@@ -341,7 +338,7 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
   const perPageSel = document.getElementById('per_page');
   const q          = document.getElementById('q');
   const btnReset   = document.getElementById('btnReset');
-  const tabBtns    = Array.from(document.querySelectorAll('.sr-tab[data-type]'));
+  const tabBtns    = Array.from(document.querySelectorAll('.sr-tab[data-seen]'));
   const rowsEl     = document.getElementById('rows-student');
   const loaderRow  = document.getElementById('loaderRow-student');
   const emptyEl    = document.getElementById('empty-student');
@@ -358,7 +355,7 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
   const showSucc = m => { document.getElementById('successMsg').textContent = m || 'Done!'; successToast.show(); };
 
   /* ── State ── */
-  const state = { page: 1, type: 'quizz' };
+  const state = { page: 1, seenStatus: 'not_seen' };
   const cache = new Map();
   let aborter = null, reqSeq = 0;
 
@@ -881,13 +878,13 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
   /* ================================================================
    | LOAD / PAINT
    |================================================================ */
-  function buildKey(){ return ['p='+state.page,'pp='+Number(perPageSel.value||20),'t='+(state.type||''),'q='+(q.value||'').trim()].join('&'); }
+  function buildKey(){ return ['p='+state.page,'pp='+Number(perPageSel.value||20),'s='+(state.seenStatus||''),'q='+(q.value||'').trim()].join('&'); }
   function buildUrl(){
     const usp=new URLSearchParams();
     usp.set('page',state.page);
     usp.set('per_page',Number(perPageSel.value||20));
     const qq=(q.value||'').trim(); if(qq) usp.set('q',qq);
-    const type=String(state.type||'').trim(); if(type) usp.set('type',type);
+    const seenStatus=String(state.seenStatus||'').trim(); if(seenStatus) usp.set('seen_status',seenStatus);
     return `${API_MY_RESULTS}?${usp.toString()}`;
   }
   function showLoader(v){ loaderRow.style.display=v?'':'none'; }
@@ -961,14 +958,14 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
   }
 
   /* ── Tab / search / per-page / reset wiring ── */
-  function setActiveTab(type){ tabBtns.forEach(btn=>btn.classList.toggle('active',String(btn.dataset.type??'')===String(type))); }
+  function setActiveTab(seenStatus){ tabBtns.forEach(btn=>btn.classList.toggle('active',String(btn.dataset.seen??'')===String(seenStatus))); }
 
   tabBtns.forEach(btn=>{
     btn.addEventListener('click',()=>{
-      const t=btn.dataset.type??'';
-      if(String(t)===String(state.type)) return;
-      state.type=String(t); state.page=1;
-      invalidateCache(); setActiveTab(state.type); load(true);
+      const seenStatus=btn.dataset.seen??'';
+      if(String(seenStatus)===String(state.seenStatus)) return;
+      state.seenStatus=String(seenStatus); state.page=1;
+      invalidateCache(); setActiveTab(state.seenStatus); load(true);
       window.scrollTo({top:0,behavior:'smooth'});
     });
   });
@@ -976,12 +973,12 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
   q.addEventListener('input',()=>{ clearTimeout(tmr); tmr=setTimeout(()=>{ state.page=1; invalidateCache(); load(true); },450); });
   perPageSel.addEventListener('change',()=>{ state.page=1; invalidateCache(); load(true); });
   btnReset.addEventListener('click',()=>{
-    q.value=''; perPageSel.value='20'; state.page=1; state.type='quizz';
-    invalidateCache(); setActiveTab('quizz'); load(true);
+    q.value=''; perPageSel.value='20'; state.page=1; state.seenStatus='not_seen';
+    invalidateCache(); setActiveTab('not_seen'); load(true);
   });
 
   /* ── Init ── */
-  setActiveTab('quizz');
+  setActiveTab('not_seen');
   load(false);
 
 })();

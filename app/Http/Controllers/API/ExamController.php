@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\File;
 use Carbon\Carbon;
 
 class ExamController extends Controller
@@ -183,6 +184,356 @@ private function logActivity(
         return (string) (DB::table('quizz_questions')->where('id', $questionId)->value('question_type') ?? 'mcq');
     }
 
+    private function decodeJsonArray(mixed $value): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return [];
+        }
+
+        try {
+            $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+            return is_array($decoded) ? $decoded : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    private function attemptQuestionOrderIds(object $attempt): array
+    {
+        return array_values(array_map(
+            fn ($qid) => (int) $qid,
+            array_filter(
+                $this->decodeJsonArray($attempt->questions_order ?? null),
+                fn ($qid) => (int) $qid > 0
+            )
+        ));
+    }
+
+    private function attemptIndexForQuestionId(object $attempt, ?int $questionId): int
+    {
+        $questionId = (int) ($questionId ?? 0);
+        if ($questionId <= 0) {
+            return 0;
+        }
+
+        $order = $this->attemptQuestionOrderIds($attempt);
+        if (empty($order)) {
+            return 0;
+        }
+
+        $idx = array_search($questionId, $order, true);
+        return $idx === false ? 0 : (int) $idx;
+    }
+
+    private function hasSelectionValue(mixed $value): bool
+    {
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                if ($this->hasSelectionValue($item)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        if ($value === null) {
+            return false;
+        }
+
+        return trim((string) $value) !== '';
+    }
+
+    private function sanitizeSelectionsMap(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($value as $qid => $selected) {
+            $qid = (int) $qid;
+            if ($qid <= 0) {
+                continue;
+            }
+
+            if (is_array($selected)) {
+                $clean[$qid] = array_values(array_map(function ($item) {
+                    return is_scalar($item) || $item === null ? $item : (string) $item;
+                }, $selected));
+                continue;
+            }
+
+            $clean[$qid] = is_scalar($selected) || $selected === null
+                ? $selected
+                : (string) $selected;
+        }
+
+        return $clean;
+    }
+
+    private function sanitizeBooleanMap(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($value as $qid => $flag) {
+            $qid = (int) $qid;
+            if ($qid <= 0) {
+                continue;
+            }
+            $clean[$qid] = (bool) $flag;
+        }
+
+        return $clean;
+    }
+
+    private function sanitizeTimeSpentMap(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($value as $qid => $seconds) {
+            $qid = (int) $qid;
+            if ($qid <= 0) {
+                continue;
+            }
+            $clean[$qid] = max(0, (int) $seconds);
+        }
+
+        return $clean;
+    }
+
+    private function parseComparableDate(mixed $value): ?Carbon
+    {
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($raw);
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function attemptSelectionSnapshot(int $attemptId): array
+    {
+        $rows = DB::table('quizz_attempt_answers')
+            ->where('attempt_id', $attemptId)
+            ->get(['question_id', 'selected_raw', 'time_spent_sec']);
+
+        $selections = [];
+        $timeSpent  = [];
+
+        foreach ($rows as $row) {
+            $qid = (int) $row->question_id;
+            if ($qid <= 0) {
+                continue;
+            }
+
+            try {
+                $selections[$qid] = json_decode((string) $row->selected_raw, true, 512, JSON_THROW_ON_ERROR);
+            } catch (\Throwable $e) {
+                $selections[$qid] = null;
+            }
+
+            $timeSpent[$qid] = max(0, (int) ($row->time_spent_sec ?? 0));
+        }
+
+        return [
+            'selections'     => $selections,
+            'time_spent_sec' => $timeSpent,
+        ];
+    }
+
+    private function examSessionDirectory(): string
+    {
+        $dir = storage_path('app/exam-sessions');
+
+        if (!is_dir($dir)) {
+            File::ensureDirectoryExists($dir);
+        }
+
+        return $dir;
+    }
+
+    private function examSessionPath(string $attemptUuid): string
+    {
+        return $this->examSessionDirectory() . DIRECTORY_SEPARATOR . trim($attemptUuid) . '.json';
+    }
+
+    private function readAttemptSession(string $attemptUuid): array
+    {
+        $attemptUuid = trim($attemptUuid);
+        if ($attemptUuid === '') {
+            return [];
+        }
+
+        $path = $this->examSessionPath($attemptUuid);
+        if (!is_file($path)) {
+            return [];
+        }
+
+        try {
+            $decoded = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+            return is_array($decoded) ? $decoded : [];
+        } catch (\Throwable $e) {
+            Log::warning('[Exam readAttemptSession] failed', [
+                'attempt_uuid' => $attemptUuid,
+                'error' => $e->getMessage(),
+            ]);
+            return [];
+        }
+    }
+
+    private function baseAttemptSessionPayload(object $attempt): array
+    {
+        $snapshot = $this->attemptSelectionSnapshot((int) $attempt->id);
+
+        $currentQuestionId = (int) ($attempt->current_question_id ?? 0);
+        $visited = [];
+        foreach ($snapshot['selections'] as $qid => $selected) {
+            if ($this->hasSelectionValue($selected)) {
+                $visited[(int) $qid] = true;
+            }
+        }
+        if ($currentQuestionId > 0) {
+            $visited[$currentQuestionId] = true;
+        }
+
+        return [
+            'version'             => 1,
+            'attempt_uuid'        => (string) $attempt->uuid,
+            'quiz_id'             => (int) $attempt->quiz_id,
+            'quiz_uuid'           => (string) ($attempt->quiz_uuid ?? ''),
+            'user_id'             => (int) $attempt->user_id,
+            'status'              => (string) ($attempt->status ?? 'in_progress'),
+            'server_end_at'       => !empty($attempt->server_deadline_at)
+                ? Carbon::parse($attempt->server_deadline_at)->toDateTimeString()
+                : null,
+            'started_at'          => !empty($attempt->started_at)
+                ? Carbon::parse($attempt->started_at)->toDateTimeString()
+                : null,
+            'last_activity_at'    => !empty($attempt->last_activity_at)
+                ? Carbon::parse($attempt->last_activity_at)->toDateTimeString()
+                : null,
+            'current_question_id' => $currentQuestionId > 0 ? $currentQuestionId : null,
+            'current_index'       => $this->attemptIndexForQuestionId($attempt, $currentQuestionId),
+            'selections'          => $snapshot['selections'],
+            'reviews'             => [],
+            'visited'             => $visited,
+            'time_spent_sec'      => $snapshot['time_spent_sec'],
+            'saved_at'            => now()->toDateTimeString(),
+        ];
+    }
+
+    private function writeAttemptSession(object $attempt, array $state = []): array
+    {
+        $payload  = $this->baseAttemptSessionPayload($attempt);
+        $existing = $this->readAttemptSession((string) $attempt->uuid);
+
+        $apply = function (array $source) use (&$payload, $attempt): void {
+            if (array_key_exists('status', $source)) {
+                $payload['status'] = (string) $source['status'];
+            }
+            if (array_key_exists('server_end_at', $source) && $source['server_end_at']) {
+                $payload['server_end_at'] = (string) $source['server_end_at'];
+            }
+            if (array_key_exists('started_at', $source) && $source['started_at']) {
+                $payload['started_at'] = (string) $source['started_at'];
+            }
+            if (array_key_exists('last_activity_at', $source) && $source['last_activity_at']) {
+                $payload['last_activity_at'] = (string) $source['last_activity_at'];
+            }
+            if (array_key_exists('current_question_id', $source)) {
+                $qid = (int) ($source['current_question_id'] ?? 0);
+                $payload['current_question_id'] = $qid > 0 ? $qid : null;
+            }
+            if (array_key_exists('current_index', $source)) {
+                $payload['current_index'] = max(0, (int) ($source['current_index'] ?? 0));
+            } elseif (!empty($payload['current_question_id'])) {
+                $payload['current_index'] = $this->attemptIndexForQuestionId($attempt, (int) $payload['current_question_id']);
+            }
+            if (array_key_exists('selections', $source)) {
+                $payload['selections'] = $this->sanitizeSelectionsMap($source['selections']);
+            }
+            if (array_key_exists('reviews', $source)) {
+                $payload['reviews'] = $this->sanitizeBooleanMap($source['reviews']);
+            }
+            if (array_key_exists('visited', $source)) {
+                $payload['visited'] = $this->sanitizeBooleanMap($source['visited']);
+            }
+            if (array_key_exists('time_spent_sec', $source)) {
+                $payload['time_spent_sec'] = $this->sanitizeTimeSpentMap($source['time_spent_sec']);
+            }
+            if (array_key_exists('saved_at', $source) && $source['saved_at']) {
+                $payload['saved_at'] = (string) $source['saved_at'];
+            }
+        };
+
+        if (!empty($existing)) {
+            $apply($existing);
+        }
+        if (!empty($state)) {
+            $apply($state);
+        }
+
+        $payload['attempt_uuid'] = (string) $attempt->uuid;
+        $payload['quiz_id']      = (int) $attempt->quiz_id;
+        $payload['quiz_uuid']    = (string) ($attempt->quiz_uuid ?? '');
+        $payload['user_id']      = (int) $attempt->user_id;
+
+        try {
+            file_put_contents(
+                $this->examSessionPath((string) $attempt->uuid),
+                json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT),
+                LOCK_EX
+            );
+        } catch (\Throwable $e) {
+            Log::warning('[Exam writeAttemptSession] failed', [
+                'attempt_uuid' => (string) $attempt->uuid,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $payload;
+    }
+
+    private function deleteAttemptSession(object|string|null $attempt): void
+    {
+        $attemptUuid = is_object($attempt)
+            ? (string) ($attempt->uuid ?? '')
+            : trim((string) $attempt);
+
+        if ($attemptUuid === '') {
+            return;
+        }
+
+        $path = $this->examSessionPath($attemptUuid);
+        if (!is_file($path)) {
+            return;
+        }
+
+        try {
+            @unlink($path);
+        } catch (\Throwable $e) {
+            Log::warning('[Exam deleteAttemptSession] failed', [
+                'attempt_uuid' => $attemptUuid,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     /* ============================================
      | POST /api/exam/start/{quizKey}
      |============================================ */
@@ -245,6 +596,10 @@ private function logActivity(
             if (!empty($running->server_deadline_at) && $now->gte(Carbon::parse($running->server_deadline_at))) {
                 $this->autoFinalize($running);
             } else {
+                $this->writeAttemptSession($running, [
+                    'saved_at' => $now->toDateTimeString(),
+                ]);
+
                 return response()->json([
                     'success' => true,
                     'attempt' => [
@@ -332,6 +687,14 @@ private function logActivity(
             'created_at'          => $now,
             'updated_at'          => $now,
         ]);
+
+        $attempt = DB::table('quizz_attempts')->where('id', $attemptId)->first();
+        if ($attempt) {
+            $this->writeAttemptSession($attempt, [
+                'current_index' => 0,
+                'saved_at'      => $now->toDateTimeString(),
+            ]);
+        }
 
         return response()->json([
             'success' => true,
@@ -447,6 +810,75 @@ private function logActivity(
     }
 
     /* ============================================
+     | GET /api/exam/my-active-attempt
+     |============================================ */
+    public function myActiveAttempt(Request $request)
+    {
+        $user = $this->getUserFromToken($request);
+        if (!$user || !$this->isStudent($user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized (student token required)',
+            ], 401);
+        }
+
+        $runningAttempts = DB::table('quizz_attempts as qa')
+            ->join('quizz as q', 'q.id', '=', 'qa.quiz_id')
+            ->where('qa.user_id', (int) $user->id)
+            ->where('qa.status', 'in_progress')
+            ->whereNull('q.deleted_at')
+            ->orderByDesc('qa.last_activity_at')
+            ->orderByDesc('qa.updated_at')
+            ->orderByDesc('qa.id')
+            ->select([
+                'qa.id',
+                'qa.uuid as attempt_uuid',
+                'qa.quiz_id',
+                'qa.quiz_uuid',
+                'qa.status',
+                'qa.started_at',
+                'qa.last_activity_at',
+                'qa.server_deadline_at',
+                'qa.total_time_sec',
+                'q.uuid as live_quiz_uuid',
+                'q.quiz_name',
+            ])
+            ->get();
+
+        foreach ($runningAttempts as $attempt) {
+            if ($this->deadlinePassed($attempt)) {
+                $this->autoFinalize($attempt, true);
+                continue;
+            }
+
+            $quizUuid = trim((string) ($attempt->live_quiz_uuid ?? $attempt->quiz_uuid ?? ''));
+            $quizKey  = $quizUuid !== '' ? $quizUuid : (string) $attempt->quiz_id;
+
+            return response()->json([
+                'success' => true,
+                'active_attempt' => [
+                    'attempt_id'        => (int) $attempt->id,
+                    'attempt_uuid'      => (string) $attempt->attempt_uuid,
+                    'quiz_id'           => (int) $attempt->quiz_id,
+                    'quiz_uuid'         => $quizUuid !== '' ? $quizUuid : null,
+                    'quiz_name'         => (string) ($attempt->quiz_name ?? 'Exam'),
+                    'status'            => (string) $attempt->status,
+                    'started_at'        => $attempt->started_at ? Carbon::parse($attempt->started_at)->toDateTimeString() : null,
+                    'last_activity_at'  => $attempt->last_activity_at ? Carbon::parse($attempt->last_activity_at)->toDateTimeString() : null,
+                    'server_deadline_at'=> $attempt->server_deadline_at ? Carbon::parse($attempt->server_deadline_at)->toDateTimeString() : null,
+                    'time_left_sec'     => $this->timeLeftSec($attempt),
+                    'continue_url'      => '/exam/' . rawurlencode($quizKey),
+                ],
+            ], 200);
+        }
+
+        return response()->json([
+            'success' => true,
+            'active_attempt' => null,
+        ], 200);
+    }
+
+    /* ============================================
      | GET /api/exam/attempts/{attempt}/questions
      |============================================ */
     public function questions(Request $request, string $attemptUuid)
@@ -513,14 +945,20 @@ private function logActivity(
             }
         }
 
-        $saved = DB::table('quizz_attempt_answers')
+        $savedRows = DB::table('quizz_attempt_answers')
             ->where('attempt_id', $attempt->id)
-            ->pluck('selected_raw', 'question_id');
+            ->get(['question_id', 'selected_raw', 'time_spent_sec']);
 
-        $selections = [];
-        foreach ($saved as $qid => $json) {
-            try { $selections[$qid] = json_decode($json, true); }
-            catch (\Throwable $e) { $selections[$qid] = null; }
+        $dbSelections = [];
+        $dbTimeSpent  = [];
+        foreach ($savedRows as $row) {
+            $qid = (int) $row->question_id;
+            try {
+                $dbSelections[$qid] = json_decode((string) $row->selected_raw, true, 512, JSON_THROW_ON_ERROR);
+            } catch (\Throwable $e) {
+                $dbSelections[$qid] = null;
+            }
+            $dbTimeSpent[$qid] = max(0, (int) ($row->time_spent_sec ?? 0));
         }
 
         $layoutQuestions = null;
@@ -583,6 +1021,55 @@ private function logActivity(
             $orderedQuestions = array_values($questionsById);
         }
 
+        $draft = $this->readAttemptSession((string) $attempt->uuid);
+
+        $selections = array_replace(
+            $dbSelections,
+            $this->sanitizeSelectionsMap($draft['selections'] ?? null)
+        );
+
+        $timeSpentSec = array_replace(
+            $dbTimeSpent,
+            $this->sanitizeTimeSpentMap($draft['time_spent_sec'] ?? null)
+        );
+
+        $visited = [];
+        foreach ($selections as $qid => $selected) {
+            if ($this->hasSelectionValue($selected)) {
+                $visited[(int) $qid] = true;
+            }
+        }
+        if (!empty($attempt->current_question_id)) {
+            $visited[(int) $attempt->current_question_id] = true;
+        }
+        $visited = array_replace(
+            $visited,
+            $this->sanitizeBooleanMap($draft['visited'] ?? null)
+        );
+
+        $reviews = $this->sanitizeBooleanMap($draft['reviews'] ?? null);
+        $currentQuestionId = (int) (($draft['current_question_id'] ?? null) ?: ($attempt->current_question_id ?? 0));
+        $currentIndex = array_key_exists('current_index', $draft)
+            ? max(0, (int) ($draft['current_index'] ?? 0))
+            : $this->attemptIndexForQuestionId($attempt, $currentQuestionId);
+
+        if (!empty($orderedQuestions)) {
+            $maxIndex = count($orderedQuestions) - 1;
+            $currentIndex = min($currentIndex, $maxIndex);
+        } else {
+            $currentIndex = 0;
+        }
+
+        $resume = $this->writeAttemptSession($attempt, [
+            'current_question_id' => $currentQuestionId > 0 ? $currentQuestionId : null,
+            'current_index'       => $currentIndex,
+            'selections'          => $selections,
+            'reviews'             => $reviews,
+            'visited'             => $visited,
+            'time_spent_sec'      => $timeSpentSec,
+            'saved_at'            => (string) ($draft['saved_at'] ?? now()->toDateTimeString()),
+        ]);
+
         return response()->json([
             'success'=>true,
             'attempt'=>[
@@ -591,7 +1078,15 @@ private function logActivity(
                 'server_end_at' => (string)$attempt->server_deadline_at,
             ],
             'questions'  => $orderedQuestions,
-            'selections' => $selections
+            'selections' => $selections,
+            'resume'     => [
+                'current_index'       => (int) ($resume['current_index'] ?? 0),
+                'current_question_id' => !empty($resume['current_question_id']) ? (int) $resume['current_question_id'] : null,
+                'reviews'             => $resume['reviews'] ?? [],
+                'visited'             => $resume['visited'] ?? [],
+                'time_spent_sec'      => $resume['time_spent_sec'] ?? [],
+                'saved_at'            => $resume['saved_at'] ?? null,
+            ],
         ], 200);
     }
 
@@ -605,10 +1100,17 @@ private function logActivity(
         if (!$user) return response()->json(['success'=>false,'message'=>'Unauthorized'], 401);
 
         $v = Validator::make($request->all(), [
-            'answers'                  => ['required','array','min:1'],
+            'answers'                  => ['sometimes','array'],
             'answers.*.question_id'    => ['required','integer','min:1'],
             'answers.*.selected'       => ['nullable'],
             'answers.*.time_spent_sec' => ['nullable','integer','min:0'],
+            'current_index'            => ['nullable','integer','min:0'],
+            'current_question_id'      => ['nullable','integer','min:1'],
+            'selections'               => ['nullable','array'],
+            'reviews'                  => ['nullable','array'],
+            'visited'                  => ['nullable','array'],
+            'time_spent_sec'           => ['nullable','array'],
+            'saved_at'                 => ['nullable','string'],
         ]);
         if ($v->fails()) return response()->json(['success'=>false,'errors'=>$v->errors()], 422);
 
@@ -630,21 +1132,63 @@ private function logActivity(
             ], 409);
         }
 
+        $incomingSavedAt = $this->parseComparableDate($request->input('saved_at'));
+        $existingDraft   = $this->readAttemptSession((string) $attempt->uuid);
+        $existingSavedAt = $this->parseComparableDate($existingDraft['saved_at'] ?? null);
+
+        if (
+            $incomingSavedAt &&
+            $existingSavedAt &&
+            $incomingSavedAt->lt($existingSavedAt)
+        ) {
+            return response()->json([
+                'success' => true,
+                'stale_ignored' => true,
+                'attempt' => [
+                    'time_left_sec' => $this->timeLeftSec($attempt),
+                    'server_end_at' => (string) $attempt->server_deadline_at,
+                ],
+                'resume' => [
+                    'current_index'       => (int) ($existingDraft['current_index'] ?? 0),
+                    'current_question_id' => !empty($existingDraft['current_question_id']) ? (int) $existingDraft['current_question_id'] : null,
+                    'saved_at'            => $existingDraft['saved_at'] ?? null,
+                ],
+            ], 200);
+        }
+
         $payload = $request->input('answers', []);
         $qIds = array_values(array_unique(array_map(fn($x)=> (int)($x['question_id'] ?? 0), $payload)));
         $qIds = array_values(array_filter($qIds, fn($x)=> $x > 0));
 
-        $qMap = DB::table('quizz_questions')
-            ->where('quiz_id', $attempt->quiz_id)
-            ->whereIn('id', $qIds)
-            ->get(['id','question_type'])
-            ->keyBy('id');
+        $qMap = collect();
+        if (!empty($qIds)) {
+            $qMap = DB::table('quizz_questions')
+                ->where('quiz_id', $attempt->quiz_id)
+                ->whereIn('id', $qIds)
+                ->get(['id','question_type'])
+                ->keyBy('id');
 
-        if ($qMap->count() !== count($qIds)) {
-            return response()->json([
-                'success'=>false,
-                'message'=>'One or more questions are invalid for this quiz',
-            ], 422);
+            if ($qMap->count() !== count($qIds)) {
+                return response()->json([
+                    'success'=>false,
+                    'message'=>'One or more questions are invalid for this quiz',
+                ], 422);
+            }
+        }
+
+        $currentQuestionId = (int) $request->input('current_question_id', 0);
+        if ($currentQuestionId > 0) {
+            $currentQuestionValid = DB::table('quizz_questions')
+                ->where('quiz_id', $attempt->quiz_id)
+                ->where('id', $currentQuestionId)
+                ->exists();
+
+            if (!$currentQuestionValid) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid current question for this quiz',
+                ], 422);
+            }
         }
 
         DB::beginTransaction();
@@ -670,7 +1214,7 @@ private function logActivity(
                     DB::table('quizz_attempt_answers')->where('id', $existing->id)->update([
                         'selected_raw'   => $selectedJson,
                         'question_type'  => $existing->question_type ?: $qType,
-                        'time_spent_sec' => (int)($existing->time_spent_sec ?? 0) + $timeSpent,
+                        'time_spent_sec' => max((int)($existing->time_spent_sec ?? 0), $timeSpent),
                         'answered_at'    => $existing->answered_at ?: $now,
                         'updated_at'     => $now,
                     ]);
@@ -688,18 +1232,55 @@ private function logActivity(
                 }
             }
 
-            DB::table('quizz_attempts')->where('id', $attempt->id)->update([
+            $attemptUpdate = [
                 'last_activity_at' => $now,
                 'updated_at'       => $now,
-            ]);
+            ];
+            if ($currentQuestionId > 0) {
+                $attemptUpdate['current_question_id']  = $currentQuestionId;
+                $attemptUpdate['current_q_started_at'] = $now;
+            }
+
+            DB::table('quizz_attempts')->where('id', $attempt->id)->update($attemptUpdate);
 
             DB::commit();
+
+            $attempt = DB::table('quizz_attempts')->where('id', $attempt->id)->first() ?? $attempt;
+            $sessionState = [
+                'last_activity_at' => $now->toDateTimeString(),
+                'saved_at'         => $request->input('saved_at', $now->toDateTimeString()),
+            ];
+            if ($currentQuestionId > 0) {
+                $sessionState['current_question_id'] = $currentQuestionId;
+            }
+            if ($request->exists('current_index')) {
+                $sessionState['current_index'] = $request->input('current_index');
+            }
+            if ($request->exists('selections')) {
+                $sessionState['selections'] = $request->input('selections');
+            }
+            if ($request->exists('reviews')) {
+                $sessionState['reviews'] = $request->input('reviews');
+            }
+            if ($request->exists('visited')) {
+                $sessionState['visited'] = $request->input('visited');
+            }
+            if ($request->exists('time_spent_sec')) {
+                $sessionState['time_spent_sec'] = $request->input('time_spent_sec');
+            }
+
+            $resume = $this->writeAttemptSession($attempt, $sessionState);
 
             return response()->json([
                 'success' => true,
                 'attempt' => [
                     'time_left_sec' => $this->timeLeftSec($attempt),
                     'server_end_at' => (string)$attempt->server_deadline_at,
+                ],
+                'resume' => [
+                    'current_index'       => (int) ($resume['current_index'] ?? 0),
+                    'current_question_id' => !empty($resume['current_question_id']) ? (int) $resume['current_question_id'] : null,
+                    'saved_at'            => $resume['saved_at'] ?? null,
                 ],
             ], 200);
         } catch (\Throwable $e) {
@@ -920,6 +1501,7 @@ private function logActivity(
     }
 
     if (in_array($attempt->status, ['submitted','auto_submitted'], true)) {
+        $this->deleteAttemptSession($attempt);
         $this->logActivity('quiz', 'default', 'Re-submit on already completed attempt', $request, $user, $attempt, [
             'status' => $attempt->status,
         ]);
@@ -979,7 +1561,7 @@ private function logActivity(
                     DB::table('quizz_attempt_answers')->where('id', $existing->id)->update([
                         'selected_raw'   => $selectedJson,
                         'question_type'  => $existing->question_type ?: $qType,
-                        'time_spent_sec' => (int)($existing->time_spent_sec ?? 0) + $timeSpent,
+                        'time_spent_sec' => max((int)($existing->time_spent_sec ?? 0), $timeSpent),
                         'answered_at'    => $existing->answered_at ?: $now,
                         'updated_at'     => $now,
                     ]);
@@ -1051,6 +1633,8 @@ private function logActivity(
         ]);
 
         DB::commit();
+
+        $this->deleteAttemptSession($attempt);
 
         $attempt = DB::table('quizz_attempts')->where('id', $attempt->id)->first();
         $summary = $this->resultSummaryForAttempt($attempt);
@@ -1258,6 +1842,7 @@ h1,h2{margin:6px 0}
             ]);
 
             DB::commit();
+            $this->deleteAttemptSession($attempt);
 
             return $refresh
                 ? DB::table('quizz_attempts')->where('id',$attempt->id)->first()
@@ -1515,6 +2100,8 @@ h1,h2{margin:6px 0}
 
      public function resultDetail(Request $request, string $resultKey)
 {
+    $viewer = $this->getUserFromToken($request);
+
     // ---------- 1. Load result + attempt + quiz (by ID or UUID) ----------
     $row = DB::table('quizz_results as r')
         ->join('quizz_attempts as a', 'a.id', '=', 'r.attempt_id')
@@ -1542,6 +2129,9 @@ h1,h2{margin:6px 0}
             'r.attempt_number',
             'r.students_answer',
             'r.publish_to_student',
+            Schema::hasColumn('quizz_results', 'seen_by_student')
+                ? 'r.seen_by_student'
+                : DB::raw('0 as seen_by_student'),
             'r.result_set_up_type',
             'r.result_release_date',
             'r.created_at as result_created_at',
@@ -1655,10 +2245,26 @@ h1,h2{margin:6px 0}
     }
 
     // ---------- 4. OPTIONAL: also include student details from DB ----------
-    $student = DB::table('users')
-        ->where('id', (int) $row->user_id)
-        ->whereNull('deleted_at')
-        ->first(['id', 'name', 'email']);
+        $student = DB::table('users')
+            ->where('id', (int) $row->user_id)
+            ->whereNull('deleted_at')
+            ->first(['id', 'name', 'email']);
+
+    $seenByStudent = (int) ($row->seen_by_student ?? 0);
+    if (
+        $viewer &&
+        (int) $viewer->id === (int) $row->user_id &&
+        $this->isStudent($viewer) &&
+        Schema::hasColumn('quizz_results', 'seen_by_student')
+    ) {
+        DB::table('quizz_results')
+            ->where('id', (int) $row->result_id)
+            ->update([
+                'seen_by_student' => 1,
+                'updated_at' => now(),
+            ]);
+        $seenByStudent = 1;
+    }
 
     // ---------- 5. Response payload ----------
     return response()->json([
@@ -1698,6 +2304,7 @@ h1,h2{margin:6px 0}
             'total_incorrect'  => (int) $row->total_incorrect,
             'total_skipped'    => (int) $row->total_skipped,
             'publish_to_student' => (int) ($row->publish_to_student ?? 0),
+            'seen_by_student'    => $seenByStudent,
             'result_created_at'  => $row->result_created_at
                 ? Carbon::parse($row->result_created_at)->toDateTimeString()
                 : null,

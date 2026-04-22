@@ -159,6 +159,7 @@ class StudentResultController extends Controller
             " . $this->safeRCol($resultTable, 'r', 'accuracy', "NULL") . " as accuracy,
 
             " . ($hasPub ? "r.publish_to_student" : "1") . " as publish_to_student,
+            1 as seen_by_student,
             COALESCE(" . $this->safeRCol($resultTable, 'r', 'result_created_at', "NULL") . ", r.created_at) as result_created_at
         ");
 
@@ -227,6 +228,7 @@ class StudentResultController extends Controller
             " . $this->safeRCol($resultTable, 'r', 'accuracy', "NULL") . " as accuracy,
 
             " . ($hasPub ? "r.publish_to_student" : "1") . " as publish_to_student,
+            1 as seen_by_student,
             COALESCE(" . $this->safeRCol($resultTable, 'r', 'result_created_at', "NULL") . ", r.created_at) as result_created_at
         ");
 
@@ -295,6 +297,7 @@ class StudentResultController extends Controller
             NULL as accuracy,
 
             " . ($hasPub ? "r.publish_to_student" : "1") . " as publish_to_student,
+            1 as seen_by_student,
             r.created_at as result_created_at
         ");
 
@@ -311,6 +314,7 @@ class StudentResultController extends Controller
         $hasPub       = $this->schemaHasColumn($resultTable, 'publish_to_student');
         $hasStatus    = $this->schemaHasColumn($resultTable, 'status');
         $hasDeletedAt = $this->schemaHasColumn($resultTable, 'deleted_at');
+        $hasSeen      = $this->schemaHasColumn($resultTable, 'seen_by_student');
 
         // ✅ attempts table (best for real attempt count)
         $attemptTable = $this->schemaHasTable('quizz_attempts') ? 'quizz_attempts' : null;
@@ -384,6 +388,7 @@ class StudentResultController extends Controller
             " . $this->safeRCol($resultTable, 'r', 'percentage', "NULL") . " as accuracy,
 
             " . ($hasPub ? "r.publish_to_student" : "1") . " as publish_to_student,
+            " . ($hasSeen ? "COALESCE(r.seen_by_student, 0)" : "0") . " as seen_by_student,
             COALESCE(" . $this->safeRCol($resultTable, 'r', 'released_at', "NULL") . ", r.created_at) as result_created_at
         ");
 
@@ -417,6 +422,7 @@ class StudentResultController extends Controller
         $perPage = min(100, max(10, (int) $request->query('per_page', 20)));
         $search  = trim((string) $request->query('q', ''));
         $type    = strtolower(trim((string) $request->query('type', '')));
+        $seenStatus = strtolower(trim((string) $request->query('seen_status', 'not_seen')));
 
         $student = DB::table('users')
             ->select([
@@ -476,6 +482,12 @@ class StudentResultController extends Controller
             $outer->where('x.game_title', 'like', "%{$search}%");
         }
 
+        if ($seenStatus === 'seen') {
+            $outer->where('x.seen_by_student', 1);
+        } elseif ($seenStatus === 'not_seen') {
+            $outer->where('x.seen_by_student', 0);
+        }
+
         $outer->orderByDesc('x.result_created_at');
 
         $offset = ($page - 1) * $perPage;
@@ -519,6 +531,7 @@ class StudentResultController extends Controller
                     'score' => $x->score,
                     'accuracy' => $x->accuracy,
                     'publish_to_student' => (int) ($x->publish_to_student ?? 1),
+                    'seen_by_student' => (int) ($x->seen_by_student ?? 0),
                     'result_created_at' => $x->result_created_at,
                 ],
             ];
@@ -531,6 +544,9 @@ class StudentResultController extends Controller
                 'page' => $page,
                 'per_page' => $perPage,
                 'has_more' => $hasMore,
+            ],
+            'filters' => [
+                'seen_status' => in_array($seenStatus, ['seen', 'not_seen'], true) ? $seenStatus : '',
             ],
         ]);
     }

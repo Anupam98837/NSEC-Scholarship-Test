@@ -175,7 +175,7 @@ html.theme-dark .dropdown-menu{background:#0f172a;border-color:var(--line-strong
                   <th class="sortable" data-col="student_name">STUDENT <span class="caret"></span></th>
                   <th style="width:170px;">FOLDER</th>
                   <th class="sortable" data-col="quiz_name">QUIZ <span class="caret"></span></th>
-                  <th style="width:110px;">ATTEMPT</th>
+                  <th style="width:130px;">SEEN STATUS</th>
                   <th class="sortable" data-col="marks_obtained" style="width:140px;">MARKS <span class="caret"></span></th>
                   <th class="sortable" data-col="percentage" style="width:120px;">% <span class="caret"></span></th>
 
@@ -231,7 +231,7 @@ html.theme-dark .dropdown-menu{background:#0f172a;border-color:var(--line-strong
                   <th>STUDENT</th>
                   <th style="width:170px;">FOLDER</th>
                   <th>QUIZ</th>
-                  <th style="width:110px;">ATTEMPT</th>
+                  <th style="width:130px;">SEEN STATUS</th>
                   <th style="width:140px;">MARKS</th>
                   <th style="width:120px;">%</th>
 
@@ -284,7 +284,7 @@ html.theme-dark .dropdown-menu{background:#0f172a;border-color:var(--line-strong
                   <th>STUDENT</th>
                   <th style="width:170px;">FOLDER</th>
                   <th>QUIZ</th>
-                  <th style="width:110px;">ATTEMPT</th>
+                  <th style="width:130px;">SEEN STATUS</th>
                   <th style="width:140px;">MARKS</th>
                   <th style="width:120px;">%</th>
 
@@ -783,6 +783,13 @@ document.addEventListener('click', (e) => {
       : `<span class="badge badge-danger text-uppercase">No</span>`;
   }
 
+  function seenStatusBadge(isSeen){
+    const seen = Number(isSeen||0) === 1;
+    return seen
+      ? `<span class="badge badge-success text-uppercase">Seen</span>`
+      : `<span class="badge badge-warning text-uppercase">Not Seen</span>`;
+  }
+
   function folderBadge(item){
     const student = item?.student || {};
     const name =
@@ -874,7 +881,7 @@ document.addEventListener('click', (e) => {
       </td>
       <td>${folderBadge(r)}</td>
       <td><div class="fw-semibold">${esc(quiz.name||quiz.quiz_name||'-')}</div></td>
-      <td><span class="badge-pill"><i class="fa fa-repeat"></i> #${Number(result.attempt_number||0)}</span></td>
+      <td>${seenStatusBadge(result.seen_by_student)}</td>
       <td>
         <div class="fw-semibold">${fmtMark(result.marks_obtained, result.total_marks)}</div>
         ${scope==='results' ? `<div class="text-muted small">Total: ${Number(result.total_marks||0)}</div>` : ``}
@@ -1645,7 +1652,7 @@ document.addEventListener('click', (e) => {
       'Student Email',
       'Folder',
       'Quiz',
-      'Attempt #',
+      'Seen Status',
       'Marks Obtained',
       'Total Marks',
       'Percentage',
@@ -1669,7 +1676,7 @@ document.addEventListener('click', (e) => {
         student.email || '',
         getFolderNamePlain(it) || '',
         (quiz.name || quiz.quiz_name || ''),
-        result.attempt_number ?? '',
+        Number(result.seen_by_student||0) === 1 ? 'Seen' : 'Not Seen',
         result.marks_obtained ?? '',
         result.total_marks ?? '',
         result.percentage ?? '',

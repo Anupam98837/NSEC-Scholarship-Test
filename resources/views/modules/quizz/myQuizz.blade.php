@@ -387,6 +387,105 @@
   html.theme-dark .qz-table thead th{background:#020b13;}
   html.theme-dark .qz-ins-dialog{background:#020b13;}
   html.theme-dark .qz-ins-box{background:#04151f;}
+
+  .qz-continue-modal{
+    position:fixed;
+    inset:0;
+    z-index:1200;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:18px;
+  }
+  .qz-continue-modal.show{display:flex;}
+  .qz-continue-backdrop{
+    position:absolute;
+    inset:0;
+    background:rgba(2,6,23,.58);
+  }
+  .qz-continue-dialog{
+    position:relative;
+    width:min(100%, 520px);
+    border-radius:20px;
+    border:1px solid var(--line-strong);
+    background:var(--surface);
+    box-shadow:var(--shadow-3);
+    padding:22px;
+    overflow:hidden;
+  }
+  .qz-continue-dialog::before{
+    content:"";
+    position:absolute;
+    width:160px;
+    height:160px;
+    right:-40px;
+    top:-40px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(20,184,166,.14), rgba(20,184,166,0));
+    pointer-events:none;
+  }
+  .qz-continue-head{
+    position:relative;
+    z-index:1;
+    display:flex;
+    align-items:flex-start;
+    gap:12px;
+  }
+  .qz-continue-icon{
+    width:52px;
+    height:52px;
+    border-radius:16px;
+    display:grid;
+    place-items:center;
+    background:rgba(20,184,166,.12);
+    color:var(--accent-color);
+    font-size:1.3rem;
+    flex:0 0 52px;
+  }
+  .qz-continue-title{
+    margin:0 0 6px;
+    font-family:var(--font-head);
+    font-size:1.15rem;
+    font-weight:800;
+    color:var(--ink);
+  }
+  .qz-continue-text{
+    margin:0;
+    color:var(--muted-color);
+    line-height:1.55;
+  }
+  .qz-continue-pills{
+    position:relative;
+    z-index:1;
+    display:grid;
+    gap:10px;
+    margin:18px 0 20px;
+  }
+  .qz-continue-pill{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    border:1px solid var(--line-strong);
+    border-radius:14px;
+    padding:12px 14px;
+    background:var(--surface-2);
+    color:var(--ink);
+  }
+  .qz-continue-pill i{
+    color:var(--accent-color);
+  }
+  .qz-continue-actions{
+    position:relative;
+    z-index:1;
+    display:flex;
+    justify-content:flex-end;
+    flex-wrap:wrap;
+    gap:10px;
+  }
+  .qz-continue-actions .btn{
+    border-radius:999px;
+    padding-inline:16px;
+  }
 </style>
 
 <div class="qz-wrap">
@@ -485,6 +584,41 @@
     </div>
   </div>
 </div>
+
+<div class="qz-continue-modal" id="qzContinueModal" aria-hidden="true">
+  <div class="qz-continue-backdrop" data-close="continue-modal"></div>
+  <div class="qz-continue-dialog" role="dialog" aria-modal="true" aria-labelledby="qzContinueTitle">
+    <div class="qz-continue-head">
+      <div class="qz-continue-icon">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+      </div>
+      <div>
+        <h2 class="qz-continue-title" id="qzContinueTitle">Continue Running Exam</h2>
+        <p class="qz-continue-text" id="qzContinueText">
+          This exam is already running. Continue from where you left off.
+        </p>
+      </div>
+    </div>
+
+    <div class="qz-continue-pills">
+      <div class="qz-continue-pill">
+        <i class="fa-solid fa-file-lines"></i>
+        <span id="qzContinueName">Exam</span>
+      </div>
+      <div class="qz-continue-pill">
+        <i class="fa-solid fa-hourglass-half"></i>
+        <span id="qzContinueStatus">Status: In progress</span>
+      </div>
+    </div>
+
+    <div class="qz-continue-actions">
+      <button type="button" class="btn btn-light btn-sm" data-close="continue-modal">Later</button>
+      <button type="button" class="btn btn-primary btn-sm" id="qzContinueBtn">
+        <i class="fa-solid fa-arrow-right"></i> Continue
+      </button>
+    </div>
+  </div>
+</div>
 @endsection
 
 @push('scripts')
@@ -532,6 +666,12 @@ document.addEventListener('DOMContentLoaded', function () {
   const insTitle   = document.getElementById('qzInsTitle');
   const insMeta    = document.getElementById('qzInsMeta');
   const insContent = document.getElementById('qzInsContent');
+  const continueModal = document.getElementById('qzContinueModal');
+  const continueName = document.getElementById('qzContinueName');
+  const continueStatus = document.getElementById('qzContinueStatus');
+  const continueText = document.getElementById('qzContinueText');
+  const continueBtn = document.getElementById('qzContinueBtn');
+  let continueUrl = null;
 
   // =======================
   // Auth helpers
@@ -816,12 +956,43 @@ document.addEventListener('DOMContentLoaded', function () {
     document.body.classList.remove('modal-open');
   }
 
+  function openContinueModal(row) {
+    if (!row) return;
+    const meta = computeActionMeta(row.type, row);
+    continueUrl = meta.startUrl || null;
+    continueName.textContent = row.title || 'Exam';
+    continueStatus.textContent = `Status: ${meta.myStatus === 'in_progress' ? 'In progress' : meta.myStatus}`;
+    continueText.textContent = meta.myStatus === 'in_progress'
+      ? 'This exam is already running. Continue from where you left off.'
+      : 'You have an exam ready to continue.';
+    continueModal.classList.add('show');
+    continueModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+  }
+
+  function closeContinueModal() {
+    continueModal.classList.remove('show');
+    continueModal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+  }
+
   document.querySelectorAll('[data-close="ins-modal"]').forEach(el => {
     el.addEventListener('click', closeInsModal);
+  });
+  document.querySelectorAll('[data-close="continue-modal"]').forEach(el => {
+    el.addEventListener('click', closeContinueModal);
+  });
+  continueBtn?.addEventListener('click', () => {
+    if (continueUrl) {
+      window.location.href = continueUrl;
+      return;
+    }
+    closeContinueModal();
   });
 
   document.addEventListener('keydown', function(e){
     if (e.key === 'Escape' && insModal.classList.contains('show')) closeInsModal();
+    if (e.key === 'Escape' && continueModal.classList.contains('show')) closeContinueModal();
   });
 
   // =======================
@@ -835,6 +1006,15 @@ document.addEventListener('DOMContentLoaded', function () {
     all: [],
     filtered: []
   };
+
+  function maybePromptContinueItem() {
+    const active = state.all.find(item => String(item.my_status || '').toLowerCase() === 'in_progress');
+    if (!active || !active.uuid) {
+      closeContinueModal();
+      return;
+    }
+    openContinueModal(active);
+  }
 
   function applySearchAndPagination(resetPage) {
     const q = (state.q || '').trim().toLowerCase();
@@ -1016,9 +1196,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const res = await fetch(url + '?' + params.toString(), {
       method: 'GET',
+      cache: 'no-store',
       headers: {
         'Accept': 'application/json',
-        'Authorization': 'Bearer ' + token
+        'Authorization': 'Bearer ' + token,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
       }
     });
 
@@ -1131,6 +1314,7 @@ document.addEventListener('DOMContentLoaded', function () {
       state.loadedOnce = true;
 
       applySearchAndPagination(true);
+      maybePromptContinueItem();
 
       const partialErrors = [];
       if (!qz.ok && qz._err) partialErrors.push('Quizzes');

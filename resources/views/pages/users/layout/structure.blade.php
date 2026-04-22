@@ -208,6 +208,122 @@
       color:#e5e7eb;
     }
     html.theme-dark #noAcademicAccess .alert a{color:#e5e7eb}
+
+    /* Resume Exam Overlay */
+    .w3-exam-resume-overlay{
+      position:fixed;
+      inset:0;
+      z-index:2100;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+      background:rgba(15,23,42,.48);
+      opacity:0;
+      visibility:hidden;
+      pointer-events:none;
+      transition:opacity .2s ease, visibility .2s ease;
+    }
+    .w3-exam-resume-overlay.w3-on{
+      opacity:1;
+      visibility:visible;
+      pointer-events:auto;
+    }
+    .w3-exam-resume-card{
+      width:min(100%, 520px);
+      background:var(--surface,#fff);
+      color:var(--text-color);
+      border:1px solid var(--line-strong,#e5e7eb);
+      border-radius:22px;
+      box-shadow:0 24px 80px rgba(15,23,42,.22);
+      padding:24px;
+      position:relative;
+      overflow:hidden;
+    }
+    .w3-exam-resume-card::before{
+      content:"";
+      position:absolute;
+      inset:auto auto -30px -30px;
+      width:140px;
+      height:140px;
+      border-radius:50%;
+      background:radial-gradient(circle, rgba(0,143,122,.16), rgba(0,143,122,0));
+      pointer-events:none;
+    }
+    .w3-exam-resume-head{
+      display:flex;
+      align-items:flex-start;
+      gap:14px;
+      margin-bottom:14px;
+      position:relative;
+      z-index:1;
+    }
+    .w3-exam-resume-icon{
+      width:54px;
+      height:54px;
+      flex:0 0 54px;
+      border-radius:16px;
+      display:grid;
+      place-items:center;
+      background:rgba(0,143,122,.12);
+      color:var(--accent-color,#008f7a);
+      font-size:1.35rem;
+    }
+    .w3-exam-resume-title{
+      margin:0;
+      font-size:1.2rem;
+      font-weight:800;
+      color:var(--ink);
+    }
+    .w3-exam-resume-text{
+      margin:0;
+      color:var(--muted-color);
+      line-height:1.6;
+    }
+    .w3-exam-resume-meta{
+      display:grid;
+      gap:10px;
+      margin:18px 0 22px;
+      position:relative;
+      z-index:1;
+    }
+    .w3-exam-resume-pill{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      border:1px solid var(--line-strong,#e5e7eb);
+      border-radius:14px;
+      padding:12px 14px;
+      background:color-mix(in oklab, var(--surface,#fff) 92%, var(--accent-color,#008f7a) 8%);
+    }
+    .w3-exam-resume-pill i{
+      color:var(--accent-color,#008f7a);
+    }
+    .w3-exam-resume-actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      justify-content:flex-end;
+      position:relative;
+      z-index:1;
+    }
+    .w3-exam-resume-btn{
+      min-width:140px;
+      height:46px;
+      border-radius:999px;
+      padding:0 18px;
+      font-weight:700;
+      border:1px solid var(--line-strong,#d1d5db);
+      background:#fff;
+      color:var(--secondary-color);
+    }
+    .w3-exam-resume-btn-primary{
+      border-color:var(--accent-color,#008f7a);
+      background:var(--accent-color,#008f7a);
+      color:#fff;
+    }
+    html.theme-dark .w3-exam-resume-overlay{ background:rgba(2,6,23,.72); }
+    html.theme-dark .w3-exam-resume-btn{ background:var(--surface); color:var(--text-color); }
   </style>
 
   <style>
@@ -228,6 +344,40 @@
 <!-- ✅ BOOT LOADING OVERLAY (METHOD) -->
 <div id="w3BootOverlay" aria-live="polite" aria-busy="true">
   @include('partials.overlay')
+</div>
+
+<div id="examResumeOverlay" class="w3-exam-resume-overlay" aria-hidden="true">
+  <div class="w3-exam-resume-card" role="dialog" aria-modal="true" aria-labelledby="examResumeTitle">
+    <div class="w3-exam-resume-head">
+      <div class="w3-exam-resume-icon">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+      </div>
+      <div>
+        <h2 id="examResumeTitle" class="w3-exam-resume-title">Exam Running</h2>
+        <p id="examResumeText" class="w3-exam-resume-text">
+          Your exam is still running. Continue from where you left.
+        </p>
+      </div>
+    </div>
+
+    <div class="w3-exam-resume-meta">
+      <div class="w3-exam-resume-pill">
+        <i class="fa-solid fa-file-lines"></i>
+        <span id="examResumeQuizName">Exam</span>
+      </div>
+      <div class="w3-exam-resume-pill">
+        <i class="fa-solid fa-stopwatch"></i>
+        <span id="examResumeTimeLeft">Remaining time: --</span>
+      </div>
+    </div>
+
+    <div class="w3-exam-resume-actions">
+      <button type="button" id="examResumeLaterBtn" class="w3-exam-resume-btn">Later</button>
+      <button type="button" id="examResumeContinueBtn" class="w3-exam-resume-btn w3-exam-resume-btn-primary">
+        Continue Exam
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- Sidebar -->
@@ -637,12 +787,44 @@ document.addEventListener('DOMContentLoaded', () => {
   const THEME_KEY = 'theme';
   const btnTheme = document.getElementById('btnTheme');
   const themeIcon = document.getElementById('themeIcon');
+  const examResumeOverlay = document.getElementById('examResumeOverlay');
+  const examResumeQuizName = document.getElementById('examResumeQuizName');
+  const examResumeTimeLeft = document.getElementById('examResumeTimeLeft');
+  const examResumeText = document.getElementById('examResumeText');
+  const examResumeContinueBtn = document.getElementById('examResumeContinueBtn');
+  const examResumeLaterBtn = document.getElementById('examResumeLaterBtn');
+  let activeExamContinueUrl = null;
 
   // ✅ overlay helpers (METHOD)
   const bootOverlay = document.getElementById('w3BootOverlay');
   const showBoot = () => { try{ bootOverlay?.classList.remove('w3-hide'); }catch(e){} };
   const hideBoot = () => { try{ bootOverlay?.classList.add('w3-hide'); }catch(e){} };
   showBoot();
+
+  function hideExamResumeOverlay(){
+    try{
+      examResumeOverlay?.classList.remove('w3-on');
+      examResumeOverlay?.setAttribute('aria-hidden', 'true');
+    }catch(e){}
+  }
+
+  function showExamResumeOverlay(active){
+    if (!active || !examResumeOverlay) return;
+
+    const mins = Math.max(0, Math.ceil(Number(active.time_left_sec || 0) / 60));
+    const quizName = String(active.quiz_name || 'Exam');
+    const timeText = mins > 0
+      ? `Remaining time: ${mins} minute${mins === 1 ? '' : 's'}`
+      : 'Remaining time: time is running';
+
+    activeExamContinueUrl = active.continue_url || null;
+    if (examResumeQuizName) examResumeQuizName.textContent = quizName;
+    if (examResumeTimeLeft) examResumeTimeLeft.textContent = timeText;
+    if (examResumeText) examResumeText.textContent = `This exam is still running. Continue from where you left off.`;
+
+    examResumeOverlay.classList.add('w3-on');
+    examResumeOverlay.setAttribute('aria-hidden', 'false');
+  }
 
   // ===== Theme
   function setTheme(mode){
@@ -806,6 +988,47 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleSectionHeaders(role);
 
     return role;
+  }
+
+  async function maybePromptActiveExam(role){
+    const normalizedRole = String(role || '').trim().toLowerCase();
+    if (normalizedRole !== 'student') return;
+
+    const token = getBearerToken();
+    if (!token) return;
+
+    const path = window.location.pathname || '';
+    if (path.startsWith('/exam/') || path === '/quizzes') return;
+
+    try{
+      const res = await fetch('/api/exam/my-active-attempt', {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
+
+      if (!res.ok) {
+        hideExamResumeOverlay();
+        return;
+      }
+
+      const data = await res.json();
+      const active = data?.active_attempt || null;
+      if (!active?.attempt_uuid || !active?.continue_url) {
+        hideExamResumeOverlay();
+        return;
+      }
+
+      showExamResumeOverlay(active);
+    }catch(e){
+      hideExamResumeOverlay();
+      console.error('[layout] active exam prompt failed:', e);
+    }
   }
 
   // ===== Sidebar API logic (METHOD)
@@ -992,6 +1215,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('logoutBtn')?.addEventListener('click', (e) => { e.preventDefault(); performLogout(); });
   document.getElementById('logoutBtnSidebar')?.addEventListener('click', (e) => { e.preventDefault(); performLogout(); });
+  examResumeLaterBtn?.addEventListener('click', hideExamResumeOverlay);
+  examResumeOverlay?.addEventListener('click', (e) => {
+    if (e.target === examResumeOverlay) hideExamResumeOverlay();
+  });
+  examResumeContinueBtn?.addEventListener('click', () => {
+    if (activeExamContinueUrl) {
+      window.location.href = activeExamContinueUrl;
+    } else {
+      hideExamResumeOverlay();
+    }
+  });
 
   // ===== INIT (METHOD: overlay stays until ready)
   (async () => {
@@ -1008,8 +1242,16 @@ document.addEventListener('DOMContentLoaded', () => {
       markActiveLinks();
     } finally {
       hideBoot();
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          maybePromptActiveExam(document.body?.dataset?.role || '');
+        }, 120);
+      });
     }
   })();
+
+  window.addEventListener('load', hideBoot, { once:true });
+  setTimeout(hideBoot, 1800);
 });
 </script>
 
