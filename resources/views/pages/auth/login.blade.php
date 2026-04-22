@@ -468,6 +468,12 @@
           token: localStorage.getItem('token'),
           role:  localStorage.getItem('role')
         };
+      },
+      getAny(){
+        return {
+          token: sessionStorage.getItem('token') || localStorage.getItem('token'),
+          role:  sessionStorage.getItem('role') || localStorage.getItem('role')
+        };
       }
     };
 
@@ -487,9 +493,9 @@
         : '<i class="fa-regular fa-eye-slash" aria-hidden="true"></i>';
     });
 
-    // ---- Auto-redirect if a remembered token exists (verify via /auth/check) ----
+    // ---- Auto-redirect if an active token exists (verify via /auth/check) ----
     async function tryAutoLoginFromLocal(){
-      const { token, role } = authStore.getLocal();
+      const { token, role } = authStore.getAny();
       if(!token) return;
 
       try{

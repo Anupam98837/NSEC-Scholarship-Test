@@ -381,6 +381,7 @@
     function normalizePhone(v){ return String(v || '').replace(/\D/g, '').slice(0, 10); }
     function normalizeCaptcha(v){ return String(v || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase(); }
     function formatCountdown(secs){
+      secs = Math.max(0, Math.ceil(Number(secs || 0)));
       const mins = Math.floor(secs / 60);
       const seconds = secs % 60;
       return mins > 0
@@ -523,6 +524,7 @@
     function startCountdown(seconds, message){
       clearInterval(resendInterval);
       resendInterval = null;
+      seconds = Math.max(0, Math.ceil(Number(seconds || 0)));
 
       if (!seconds || seconds <= 0){
         timerText.classList.add('d-none');
