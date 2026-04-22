@@ -927,19 +927,19 @@ html.theme-dark .badge-code{
   <div class="form-text">Optional: assign user into a folder group.</div>
 </div>
 
-          {{-- Password (create only) --}}
+          {{-- Password --}}
           <div class="col-md-6 js-pw-section">
-            <label class="form-label">Password <span class="text-danger">*</span></label>
+            <label class="form-label">Password</label>
             <div class="u-pw-wrap">
               <input type="password" class="form-control pe-5" id="userPassword" placeholder="••••••••">
               <button type="button" class="u-eye js-eye-toggle" data-target="userPassword" aria-label="Toggle password visibility">
                 <i class="fa-regular fa-eye-slash"></i>
               </button>
             </div>
-            <div class="form-text">Password for new user (min 8 characters).</div>
+            <div class="form-text">Required for new user. In edit, leave blank to keep the current password.</div>
           </div>
           <div class="col-md-6 js-pw-section">
-            <label class="form-label">Confirm Password <span class="text-danger">*</span></label>
+            <label class="form-label">Confirm Password</label>
             <div class="u-pw-wrap">
               <input type="password" class="form-control pe-5" id="userPasswordConfirmation" placeholder="••••••••">
               <button type="button" class="u-eye js-eye-toggle" data-target="userPasswordConfirmation" aria-label="Toggle confirm password visibility">
@@ -947,7 +947,6 @@ html.theme-dark .badge-code{
               </button>
             </div>
           </div>
-
           {{-- Optional profile/contact fields --}}
           <div class="col-md-6">
             <label class="form-label">Alt. Email</label>
@@ -2746,7 +2745,6 @@ document.addEventListener('click', (e) => {
     resetUserForm();
     userModalTitle.textContent = 'Edit User';
     userForm.dataset.mode = 'edit';
-    pwSections.forEach(el => el.classList.add('d-none'));
 
     try{
       const res = await fetch(`/api/users/${id}`, {
@@ -2821,6 +2819,8 @@ document.addEventListener('click', (e) => {
     const email = userEmailInput.value.trim();
     const role  = userRoleInput.value;
     const status= userStatusInput.value || 'active';
+    const pw    = userPasswordInput.value;
+    const pw2   = userPassword2Input.value;
 
     if (!name){
       Swal.fire('Name required','Please enter full name.','info');
@@ -2836,9 +2836,16 @@ document.addEventListener('click', (e) => {
     }
 
     if (mode === 'create'){
-      const pw  = userPasswordInput.value;
-      const pw2 = userPassword2Input.value;
       if (!pw || pw.length < 8){
+        Swal.fire('Password too short','Password must be at least 8 characters.','info');
+        return;
+      }
+      if (pw !== pw2){
+        Swal.fire('Password mismatch','Password and confirm password must match.','info');
+        return;
+      }
+    }else if (pw || pw2){
+      if (pw.length < 8){
         Swal.fire('Password too short','Password must be at least 8 characters.','info');
         return;
       }
@@ -2874,8 +2881,9 @@ document.addEventListener('click', (e) => {
     if (userAddressInput.value.trim()){
       fd.append('address', userAddressInput.value.trim());
     }
-    if (mode === 'create'){
-      fd.append('password', userPasswordInput.value);
+    if (pw){
+      fd.append('password', pw);
+      fd.append('password_confirmation', pw2);
     }
     if (userImageInput.files && userImageInput.files[0]){
       fd.append('image', userImageInput.files[0]);

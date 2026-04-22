@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\AutoAssignQuizController;
 use App\Models\OtpVerification;
 use App\Services\OtpService;
 use Illuminate\Http\Request;
@@ -99,9 +100,7 @@ public function completeRegistration(Request $request)
 
     $now = now();
 
-    // Auto assign these quiz IDs after registration
-    $autoQuizIds = [73,31,28];
-    $autoQuizIds = array_values(array_unique(array_map('intval', $autoQuizIds)));
+    $autoQuizIds = AutoAssignQuizController::selectedQuizIdsForStudentRegister();
 
     DB::transaction(function () use ($request, $phone, $now, $autoQuizIds) {
         $userId = DB::table('users')->insertGetId([

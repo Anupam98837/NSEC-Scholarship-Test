@@ -428,7 +428,7 @@ overflow-x:hidden;
 <script>
 (function(){
   const RESET_API  = "/api/auth/forgot-password/reset";
-  const LOGIN_PAGE = "/";
+  const LOGIN_PAGE = "/login-passhallienz";
 
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 

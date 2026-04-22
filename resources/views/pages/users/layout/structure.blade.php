@@ -163,9 +163,10 @@
 
     /* Content */
     .w3-content{
+      width:100%;
       padding:16px;
-      max-width:1280px;
-      margin-inline:auto;
+      max-width:100%;
+      margin-inline:0;
       transition:padding .28s ease;
     }
     @media (min-width: 992px){
@@ -322,6 +323,7 @@
       <div id="sm-admin-quizzes" class="w3-submenu" role="group" aria-label="Quizzes submenu">
         <a href="/quizz/create" class="w3-link">Create Quiz</a>
         <a href="/quizz/manage" class="w3-link">Manage Quizzes</a>
+        <a href="/quizz/auto-assign" class="w3-link">Auto Assign on Register</a>
       </div>
     </div>
 {{-- ✅ END Path Games --}}
@@ -620,8 +622,8 @@
 <div id="sidebarOverlay" class="w3-overlay" aria-hidden="true"></div>
 
 <!-- Content -->
-<main class="w3-content mx-auto">
-  <section class="panel mx-auto">@yield('content')</section>
+<main class="w3-content">
+  <section class="panel w-100">@yield('content')</section>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>

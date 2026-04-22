@@ -9,8 +9,16 @@ use Illuminate\Http\Request;
 */
 
 Route::get('/', function () {
-    return view('pages.auth.login');
+    return view('pages.auth.otpLogin');
 });
+
+Route::get('/login', function () {
+    return redirect('/login-passhallienz');
+});
+
+Route::get('/login-passhallienz', function () {
+    return view('pages.auth.login');
+})->name('login.password');
 // Route::get('/register/{uid?}', function (?string $uid = null) {
 //     return view('pages.auth.register', compact('uid'));
 // })->whereUuid('uid');
@@ -22,7 +30,7 @@ Route::get('/register', function () {
 Route::get('/forgot-password', fn () => view('pages.auth.forgotPassword'));
 Route::get('/reset-password', function (Request $request) {
     if (!$request->query('token') || !$request->query('email')) {
-        return redirect('/login')->with('error', 'Invalid or incomplete reset link.');
+        return redirect('/login-passhallienz')->with('error', 'Invalid or incomplete reset link.');
     }
 
     return view('pages.auth.resetPassword');
@@ -65,6 +73,10 @@ Route::get('/quizz/create', function () {
 
 Route::get('/quizz/manage', function () {
     return view('pages.users.pages.quizz.manageQuizz');
+});
+
+Route::get('/quizz/auto-assign', function () {
+    return view('pages.users.pages.quizz.autoAssignQuizzes');
 });
 
 Route::get('/quizz/questions/manage', function () {

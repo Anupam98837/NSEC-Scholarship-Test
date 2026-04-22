@@ -363,181 +363,375 @@
   }
   .act-pagination button:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
   .act-pagination button:disabled { opacity: .4; cursor: not-allowed; }
+  /* ── Queue Layout ───────────────────────────── */
+.fl-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.queue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.lead-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+  transition: var(--transition);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.lead-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.lead-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.lead-card-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--brand-light);
+  border: 1px solid rgba(201,75,80,.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand);
+  font-weight: 800;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+.lead-card-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  margin: 0 0 4px;
+}
+.lead-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.lead-mini-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.lead-mini-item {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+}
+.lead-mini-item label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.lead-mini-item div {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  word-break: break-word;
+}
+.lead-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+.btn-view-profile,
+.btn-back,
+.btn-next {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.btn-view-profile {
+  border: 1px solid rgba(201,75,80,.22);
+  background: var(--brand-light);
+  color: var(--brand-dark);
+  width: 100%;
+}
+.btn-view-profile:hover {
+  background: #fde8e8;
+}
+.detail-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.detail-toolbar-left,
+.detail-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.btn-back {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+.btn-back:hover {
+  background: var(--surface-2);
+}
+.btn-next {
+  border: 1px solid rgba(79,70,229,.22);
+  background: var(--info-light);
+  color: var(--info);
+}
+.btn-next:hover:not(:disabled) {
+  background: #e0e7ff;
+}
+.btn-next:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.detail-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.d-none-force {
+  display: none !important;
+}
+
+@media (max-width: 640px) {
+  .lead-mini-grid {
+    grid-template-columns: 1fr;
+  }
+  .detail-toolbar {
+    align-items: stretch;
+  }
+  .detail-toolbar-left,
+  .detail-toolbar-right {
+    width: 100%;
+  }
+  .detail-toolbar-left > *,
+  .detail-toolbar-right > * {
+    flex: 1;
+  }
+}
 </style>
 @endpush
-
 @section('content')
 <div class="container-fluid fl-wrap">
 
-  {{-- Header --}}
   <div class="fl-header">
     <div class="fl-eyebrow"><i class="fa fa-bolt"></i> Live Queue</div>
     <h1 class="fl-title">Fresh Leads</h1>
-    <p class="fl-sub">Unassigned students — first come, first served</p>
+    <p class="fl-sub">View all unassigned leads, open one profile, assign, and move to the next without losing the queue.</p>
   </div>
 
-  {{-- Stats --}}
   <div class="fl-stats">
     <div class="stat-pill"><span class="dot" style="background:var(--brand)"></span><strong id="statTotal">0</strong> Total</div>
     <div class="stat-pill"><span class="dot" style="background:var(--warn)"></span><strong id="statUnassigned">0</strong> Unassigned</div>
-    <div class="stat-pill"><span class="dot" style="background:var(--success)"></span><strong id="statAssigned">0</strong> Assigned</div>
+    <div class="stat-pill"><span class="dot" style="background:var(--success)"></span><strong id="statAssigned">0</strong> Assigned to me</div>
   </div>
 
-  {{-- Focus Card (hidden until student loaded) --}}
-  <div id="focusWrap" class="d-none">
-    <div id="focusCard" class="focus-card locked">
+  <div class="fl-body">
 
-      {{-- Head --}}
-      <div class="focus-head">
-        <div class="focus-left">
-          <div class="focus-avatar" id="focusAvatar">—</div>
-          <div style="min-width:0">
-            <p class="focus-name" id="focusName">—</p>
-            <div class="focus-meta">
-              <span id="focusStatusBadge" class="badge-unassigned"><i class="fa fa-circle" style="font-size:.45rem"></i> Unassigned</span>
-              <span><i class="fa-regular fa-envelope" style="opacity:.6"></i> <span id="focusEmail">—</span></span>
-              <span class="demo d-none"><i class="fa fa-phone" style="opacity:.6"></i> <span id="focusPhone">—</span></span>
-            </div>
-          </div>
-        </div>
-        <div class="focus-actions">
-          <button class="btn-assign" id="btnAssignToMe" type="button">
-            <i class="fa fa-user-check"></i> Assign to Me
+    {{-- Queue View --}}
+    <div id="queueView">
+      <div id="queueState" class="fl-state">
+        <div class="state-icon"><i class="fa fa-circle-notch fa-spin" style="color:var(--brand)"></i></div>
+        <p class="state-title">Loading queue</p>
+        <p class="mt-1" style="font-size:13px">Fetching all fresh unassigned leads…</p>
+      </div>
+
+      <div id="leadQueue" class="queue-grid d-none"></div>
+    </div>
+
+    {{-- Detail View --}}
+    <div id="detailView" class="d-none">
+      <div class="detail-toolbar mb-3">
+        <div class="detail-toolbar-left">
+          <button class="btn-back" id="btnBackToQueue" type="button">
+            <i class="fa fa-arrow-left"></i> Back to Queue
           </button>
-          <button class="btn-quiz d-none" id="btnAssignQuiz" type="button">
-            <i class="fa fa-clipboard-list"></i> Assign Exams
+          <div class="detail-hint" id="detailHint">Viewing selected lead</div>
+        </div>
+        <div class="detail-toolbar-right">
+          <button class="btn-next" id="btnNextLead" type="button">
+            Next lead <i class="fa fa-arrow-right"></i>
           </button>
         </div>
       </div>
 
-      {{-- ══ Custom Tab Nav ══ --}}
-      <div class="sp-tab-nav">
-        <button class="sp-tab-btn active" data-tab="tabProfile"><i class="fa fa-address-card"></i> Profile</button>
-        <button class="sp-tab-btn" data-tab="tabExams"><i class="fa fa-file-alt"></i> Exams</button>
-        <button class="sp-tab-btn" data-tab="tabActivity"><i class="fa fa-chart-line"></i> Activity</button>
-        <button class="sp-tab-btn" data-tab="tabComms"><i class="fa fa-comments"></i> Communications</button>
-      </div>
+      <div id="focusWrap">
+        <div id="focusCard" class="focus-card locked">
 
-      {{-- Tab Body --}}
-      <div class="sp-tab-body">
-
-        {{-- Profile Tab --}}
-        <div class="sp-tab-pane active" id="tabProfile">
-          <div class="lock-blur">
-            <div class="section-head">
-              <div class="section-title"><i class="fa fa-user"></i> Personal &amp; Contact Details</div>
-            </div>
-            <div class="info-grid">
-              <div class="info-field"><label>Full Name</label><div class="field-val" id="spName">—</div></div>
-              <div class="info-field"><label>Primary Email</label><div class="field-val" id="spEmail">—</div></div>
-              <div class="info-field"><label>Mobile Number</label><div class="field-val" id="spMobile">—</div></div>
-              <div class="info-field"><label>WhatsApp</label><div class="field-val" id="spWhatsapp">—</div></div>
-              <div class="info-field"><label>Alternative Email</label><div class="field-val" id="spAltEmail">—</div></div>
-            </div>
-            <div class="sp-divider"></div>
-            <div class="section-head">
-              <div class="section-title"><i class="fa fa-shield-halved"></i> Guardian Information</div>
-            </div>
-            <div class="info-grid">
-              <div class="info-field"><label>Guardian Name</label><div class="field-val" id="spGuardian">—</div></div>
-              <div class="info-field"><label>Guardian Phone</label><div class="field-val" id="spGuardianNum">—</div></div>
-            </div>
-            <div class="sp-divider"></div>
-            <div class="section-head">
-              <div class="section-title"><i class="fa fa-school"></i> School / Exam Details</div>
-            </div>
-            <div class="info-grid">
-              <div class="info-field"><label>Enrolled Class</label><div class="field-val" id="spClass">—</div></div>
-              <div class="info-field"><label>Education Board</label><div class="field-val" id="spBoard">—</div></div>
-              <div class="info-field"><label>Exam Type</label><div class="field-val" id="spExamType">—</div></div>
-              <div class="info-field"><label>Year of Passout</label><div class="field-val" id="spPassout">—</div></div>
-            </div>
-          </div>
-          <div class="lock-note">
-            <i class="fa fa-lock me-2"></i> <strong>Locked.</strong> Assign this student to yourself to view full profile details.
-          </div>
-        </div>
-
-        {{-- Exams Tab --}}
-        <div class="sp-tab-pane" id="tabExams">
-          <div class="lock-blur">
-            <div id="examsContent">
-              <div class="exam-placeholder" id="examsPlaceholder">
-                <i class="fa fa-file-circle-question mb-2" style="font-size:1.4rem;opacity:.4"></i>
-                <div>No exam results yet. Assign exams using the button above.</div>
-              </div>
-              <div id="examAccordion" class="d-none"></div>
-            </div>
-          </div>
-          <div class="lock-note">
-            <i class="fa fa-lock me-2"></i> <strong>Locked.</strong> Assign to unlock exam history.
-          </div>
-        </div>
-
-        {{-- Activity Tab --}}
-        <div class="sp-tab-pane" id="tabActivity">
-          <div class="lock-blur">
-            <div class="section-head">
-              <div class="section-title"><i class="fa fa-chart-line"></i> Activity Log</div>
-              <div style="display:flex;gap:8px;align-items:center;">
-                <select id="actModuleFilter" style="font-size:12px;padding:5px 10px;border-radius:8px;border:1px solid var(--border);color:var(--text);background:var(--surface);">
-                  <option value="">All Modules</option>
-                </select>
-                <select id="actTypeFilter" style="font-size:12px;padding:5px 10px;border-radius:8px;border:1px solid var(--border);color:var(--text);background:var(--surface);">
-                  <option value="">All Types</option>
-                  <option value="store">Created</option>
-                  <option value="update">Updated</option>
-                  <option value="delete">Deleted</option>
-                  <option value="default">Default</option>
-                </select>
-              </div>
-            </div>
-            <div id="activityFeedWrap">
-              <div class="exam-placeholder" id="actPlaceholder">
-                <i class="fa fa-chart-line mb-2" style="font-size:1.4rem;opacity:.4"></i>
-                <div>Activity will appear here once loaded.</div>
-              </div>
-              <div class="activity-feed d-none" id="activityFeed"></div>
-              <div class="act-pagination d-none" id="actPagination">
-                <span id="actPaginationInfo"></span>
-                <div style="display:flex;gap:6px;">
-                  <button id="actPrevBtn"><i class="fa fa-chevron-left"></i> Prev</button>
-                  <button id="actNextBtn">Next <i class="fa fa-chevron-right"></i></button>
+          <div class="focus-head">
+            <div class="focus-left">
+              <div class="focus-avatar" id="focusAvatar">—</div>
+              <div style="min-width:0">
+                <p class="focus-name" id="focusName">—</p>
+                <div class="focus-meta">
+                  <span id="focusStatusBadge" class="badge-unassigned">
+                    <i class="fa fa-circle" style="font-size:.45rem"></i> Unassigned
+                  </span>
+                  <span><i class="fa-regular fa-envelope" style="opacity:.6"></i> <span id="focusEmail">—</span></span>
+                  <span><i class="fa fa-phone" style="opacity:.6"></i> <span id="focusPhone">—</span></span>
                 </div>
               </div>
             </div>
-          </div>
-          <div class="lock-note">
-            <i class="fa fa-lock me-2"></i> <strong>Locked.</strong> Assign to unlock activity log.
-          </div>
-        </div>
 
-        {{-- Communications Tab --}}
-        <div class="sp-tab-pane" id="tabComms">
-          <div class="lock-blur">
-            <div class="exam-placeholder">
-              <i class="fa fa-comments mb-2" style="font-size:1.4rem;opacity:.4"></i>
-              <div>Call logs, WhatsApp and email history will appear here.</div>
+            <div class="focus-actions">
+              <button class="btn-assign" id="btnAssignToMe" type="button">
+                <i class="fa fa-user-check"></i> Assign to Me
+              </button>
+              <button class="btn-quiz d-none" id="btnAssignQuiz" type="button">
+                <i class="fa fa-clipboard-list"></i> Assign Exams
+              </button>
             </div>
           </div>
-          <div class="lock-note">
-            <i class="fa fa-lock me-2"></i> <strong>Locked.</strong> Assign to unlock communication history.
+
+          <div class="sp-tab-nav">
+            <button class="sp-tab-btn active" data-tab="tabProfile"><i class="fa fa-address-card"></i> Profile</button>
+            <button class="sp-tab-btn" data-tab="tabExams"><i class="fa fa-file-alt"></i> Exams</button>
+            <button class="sp-tab-btn" data-tab="tabActivity"><i class="fa fa-chart-line"></i> Activity</button>
+            <button class="sp-tab-btn" data-tab="tabComms"><i class="fa fa-comments"></i> Communications</button>
+          </div>
+
+          <div class="sp-tab-body">
+
+            <div class="sp-tab-pane active" id="tabProfile">
+              <div class="lock-blur">
+                <div class="section-head">
+                  <div class="section-title"><i class="fa fa-user"></i> Personal &amp; Contact Details</div>
+                </div>
+                <div class="info-grid">
+                  <div class="info-field"><label>Full Name</label><div class="field-val" id="spName">—</div></div>
+                  <div class="info-field"><label>Primary Email</label><div class="field-val" id="spEmail">—</div></div>
+                  <div class="info-field"><label>Mobile Number</label><div class="field-val" id="spMobile">—</div></div>
+                  <div class="info-field"><label>WhatsApp</label><div class="field-val" id="spWhatsapp">—</div></div>
+                  <div class="info-field"><label>Alternative Email</label><div class="field-val" id="spAltEmail">—</div></div>
+                </div>
+
+                <div class="sp-divider"></div>
+
+                <div class="section-head">
+                  <div class="section-title"><i class="fa fa-shield-halved"></i> Guardian Information</div>
+                </div>
+                <div class="info-grid">
+                  <div class="info-field"><label>Guardian Name</label><div class="field-val" id="spGuardian">—</div></div>
+                  <div class="info-field"><label>Guardian Phone</label><div class="field-val" id="spGuardianNum">—</div></div>
+                </div>
+
+                <div class="sp-divider"></div>
+
+                <div class="section-head">
+                  <div class="section-title"><i class="fa fa-school"></i> School / Exam Details</div>
+                </div>
+                <div class="info-grid">
+                  <div class="info-field"><label>Enrolled Class</label><div class="field-val" id="spClass">—</div></div>
+                  <div class="info-field"><label>Education Board</label><div class="field-val" id="spBoard">—</div></div>
+                  <div class="info-field"><label>Exam Type</label><div class="field-val" id="spExamType">—</div></div>
+                  <div class="info-field"><label>Year of Passout</label><div class="field-val" id="spPassout">—</div></div>
+                </div>
+              </div>
+
+              <div class="lock-note">
+                <i class="fa fa-lock me-2"></i>
+                <strong>Locked.</strong> Assign this lead to yourself to view full details.
+              </div>
+            </div>
+
+            <div class="sp-tab-pane" id="tabExams">
+              <div class="lock-blur">
+                <div id="examsContent">
+                  <div class="exam-placeholder" id="examsPlaceholder">
+                    <i class="fa fa-file-circle-question mb-2" style="font-size:1.4rem;opacity:.4"></i>
+                    <div>No exam results yet. Assign exams using the button above.</div>
+                  </div>
+                  <div id="examAccordion" class="d-none"></div>
+                </div>
+              </div>
+              <div class="lock-note">
+                <i class="fa fa-lock me-2"></i> <strong>Locked.</strong> Assign to unlock exam history.
+              </div>
+            </div>
+
+            <div class="sp-tab-pane" id="tabActivity">
+              <div class="lock-blur">
+                <div class="section-head">
+                  <div class="section-title"><i class="fa fa-chart-line"></i> Activity Log</div>
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <select id="actModuleFilter" style="font-size:12px;padding:5px 10px;border-radius:8px;border:1px solid var(--border);color:var(--text);background:var(--surface);">
+                      <option value="">All Modules</option>
+                    </select>
+                    <select id="actTypeFilter" style="font-size:12px;padding:5px 10px;border-radius:8px;border:1px solid var(--border);color:var(--text);background:var(--surface);">
+                      <option value="">All Types</option>
+                      <option value="store">Created</option>
+                      <option value="update">Updated</option>
+                      <option value="delete">Deleted</option>
+                      <option value="default">Default</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div id="activityFeedWrap">
+                  <div class="exam-placeholder" id="actPlaceholder">
+                    <i class="fa fa-chart-line mb-2" style="font-size:1.4rem;opacity:.4"></i>
+                    <div>Activity will appear here once loaded.</div>
+                  </div>
+                  <div class="activity-feed d-none" id="activityFeed"></div>
+                  <div class="act-pagination d-none" id="actPagination">
+                    <span id="actPaginationInfo"></span>
+                    <div style="display:flex;gap:6px;">
+                      <button id="actPrevBtn"><i class="fa fa-chevron-left"></i> Prev</button>
+                      <button id="actNextBtn">Next <i class="fa fa-chevron-right"></i></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="lock-note">
+                <i class="fa fa-lock me-2"></i> <strong>Locked.</strong> Assign to unlock activity log.
+              </div>
+            </div>
+
+            <div class="sp-tab-pane" id="tabComms">
+              <div class="lock-blur">
+                <div class="exam-placeholder">
+                  <i class="fa fa-comments mb-2" style="font-size:1.4rem;opacity:.4"></i>
+                  <div>Call logs, WhatsApp and email history will appear here.</div>
+                </div>
+              </div>
+              <div class="lock-note">
+                <i class="fa fa-lock me-2"></i> <strong>Locked.</strong> Assign to unlock communication history.
+              </div>
+            </div>
+
           </div>
         </div>
-
-      </div>{{-- /sp-tab-body --}}
+      </div>
     </div>
-  </div>
 
-  {{-- Loading / Empty state --}}
-  <div id="flState" class="fl-state">
-    <div class="state-icon"><i class="fa fa-circle-notch fa-spin" style="color:var(--brand)"></i></div>
-    <p class="state-title">Ready</p>
-    <p class="mt-1" style="font-size:13px">Accept the prompt to load the next student in queue.</p>
   </div>
-
 </div>
-
 {{-- ═══════════════════════════════════════════
      Assign Exams Modal
 ═══════════════════════════════════════════ --}}
@@ -606,51 +800,56 @@
 })();
 
 async function boot() {
-
-  /* ══ CONFIG ══════════════════════════════════════════════ */
   const FRESH_LEADS_URL   = '/api/students/fresh-leads';
   const ASSIGN_URL        = (myId, uuid) => `/api/counsellors/${myId}/students/${uuid}/assign`;
   const AUTH_CHECK_URL    = '/api/auth/check';
+  const MY_ASSIGNMENTS_URL = '/api/my-assignments?role=academic_counsellor';
+
   const USER_QUIZZES_URL  = (id) => `/api/users/${id}/quizzes`;
   const QUIZ_ASSIGN_URL   = (id) => `/api/users/${id}/quizzes/assign`;
   const QUIZ_UNASSIGN_URL = (id) => `/api/users/${id}/quizzes/unassign`;
+
+  const ACT_LIMIT = 15;
   const ACTIVITY_LOGS_URL = (studentId, page, module, activity) => {
     const p = new URLSearchParams({ student_id: studentId, limit: ACT_LIMIT, page, sort: 'desc' });
-    if (module)   p.set('module', module);
+    if (module) p.set('module', module);
     if (activity) p.set('activity', activity);
     return `/api/activity-logs?${p}`;
   };
 
-  /* ══ AUTH ════════════════════════════════════════════════ */
   const TOKEN = sessionStorage.getItem('token') || localStorage.getItem('token') || '';
   if (!TOKEN) {
     await Swal.fire({ icon: 'warning', title: 'Session Expired', text: 'Please log in again.' });
-    location.href = '/'; return;
+    location.href = '/';
+    return;
   }
+
   function hdrs(extra) {
     return Object.assign({ 'Authorization': 'Bearer ' + TOKEN, 'Accept': 'application/json' }, extra || {});
   }
+
   function normalizeRole(v) {
     let r = String(v || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
     const map = { academiccounsellor: 'academic_counsellor', academiccounselor: 'academic_counsellor' };
     return map[r.replace(/_/g, '')] || r;
   }
-  const ROLE       = normalizeRole(sessionStorage.getItem('role') || localStorage.getItem('role') || '');
-  const CAN_ASSIGN = (ROLE === 'academic_counsellor');
 
-  /* ══ DOM ═════════════════════════════════════════════════ */
+  const ROLE       = normalizeRole(sessionStorage.getItem('role') || localStorage.getItem('role') || '');
+  const CAN_ASSIGN = ROLE === 'academic_counsellor';
+
+  const queueView      = document.getElementById('queueView');
+  const detailView     = document.getElementById('detailView');
+  const queueState     = document.getElementById('queueState');
+  const leadQueue      = document.getElementById('leadQueue');
+  const btnBackToQueue = document.getElementById('btnBackToQueue');
+  const btnNextLead    = document.getElementById('btnNextLead');
+  const detailHint     = document.getElementById('detailHint');
+
   const focusWrap       = document.getElementById('focusWrap');
   const focusCard       = document.getElementById('focusCard');
-  const flState         = document.getElementById('flState');
   const btnAssignToMe   = document.getElementById('btnAssignToMe');
   const btnAssignQuiz   = document.getElementById('btnAssignQuiz');
   const assignQuizModal = new bootstrap.Modal(document.getElementById('assignQuizModal'));
-
-  /* ══ ACTIVITY STATE ══════════════════════════════════════ */
-  const ACT_LIMIT      = 15;
-  let   actPage        = 1;
-  let   actTotal       = 0;
-  let   actModsLoaded  = false; // guard: populate module dropdown only once per student
 
   const actFeed        = document.getElementById('activityFeed');
   const actPlaceholder = document.getElementById('actPlaceholder');
@@ -661,20 +860,33 @@ async function boot() {
   const actModFilter   = document.getElementById('actModuleFilter');
   const actTypeFilter  = document.getElementById('actTypeFilter');
 
-  /* ══ STATE ═══════════════════════════════════════════════ */
-  let MY_ID    = '';
-  let focused  = null;
-  let uqData   = [];
+  const examAccordion   = document.getElementById('examAccordion');
+  const examsPlaceholder = document.getElementById('examsPlaceholder');
+
+  let MY_ID = '';
+  let queue = [];
+  let focused = null;
+  let currentIndex = -1;
+  let assignedMineCount = 0;
+
+  let uqData = [];
   let uqUserId = null;
 
-  /* ══ UTILS ═══════════════════════════════════════════════ */
+  let actPage = 1;
+  let actTotal = 0;
+  let actModsLoaded = false;
+
+  const examResultCache = {};
+
   function esc(s) {
     const m = { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' };
     return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => m[c]);
   }
+
   function initials(n) {
-    return (n||'?').trim().split(' ').slice(0,2).map(p=>p[0]).join('').toUpperCase();
+    return (n || '?').trim().split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase();
   }
+
   function val(v) {
     return (v !== null && v !== undefined && String(v).trim() !== '') ? String(v) : '—';
   }
@@ -682,28 +894,130 @@ async function boot() {
   async function getMyId() {
     const stored = sessionStorage.getItem('user_id') || localStorage.getItem('user_id') || '';
     if (stored) return stored;
+
     try {
       const res = await fetch(AUTH_CHECK_URL, { headers: hdrs() });
       const j   = await res.json().catch(() => ({}));
       const id  = j?.user?.id ?? j?.data?.id ?? null;
-      if (id) { sessionStorage.setItem('user_id', String(id)); return String(id); }
-    } catch(e) {}
+      if (id) {
+        sessionStorage.setItem('user_id', String(id));
+        return String(id);
+      }
+    } catch (e) {}
     return '';
   }
 
-  /* ══ STATS ═══════════════════════════════════════════════ */
-  function updateStats(data) {
-    document.getElementById('statTotal').textContent      = data.total      ?? 0;
-    document.getElementById('statUnassigned').textContent = data.unassigned ?? 0;
-    document.getElementById('statAssigned').textContent   = data.assigned   ?? 0;
+  async function loadAssignedMineCount() {
+    if (!CAN_ASSIGN) {
+      assignedMineCount = 0;
+      return;
+    }
+
+    try {
+      const res = await fetch(MY_ASSIGNMENTS_URL, { headers: hdrs() });
+      const j   = await res.json().catch(() => ({}));
+      const mine = Array.isArray(j?.data?.my_students) ? j.data.my_students : [];
+      assignedMineCount = mine.length;
+    } catch (e) {
+      assignedMineCount = 0;
+    }
   }
 
-  /* ══ LOCK TOGGLE ═════════════════════════════════════════ */
+  function updateStats() {
+    const unassigned = queue.length;
+    const total = unassigned + assignedMineCount;
+
+    document.getElementById('statTotal').textContent      = total;
+    document.getElementById('statUnassigned').textContent = unassigned;
+    document.getElementById('statAssigned').textContent   = assignedMineCount;
+  }
+
+  function showQueueView() {
+    detailView.classList.add('d-none');
+    queueView.classList.remove('d-none');
+  }
+
+  function showDetailView() {
+    queueView.classList.add('d-none');
+    detailView.classList.remove('d-none');
+  }
+
+  function renderQueue() {
+    updateStats();
+
+    if (!queue.length) {
+      leadQueue.classList.add('d-none');
+      queueState.classList.remove('d-none');
+      queueState.innerHTML = `
+        <div class="state-icon"><i class="fa fa-check-circle" style="color:var(--success)"></i></div>
+        <p class="state-title">Queue Empty</p>
+        <p class="mt-1" style="font-size:13px">No unassigned students are left in the fresh leads queue.</p>
+      `;
+      return;
+    }
+
+    queueState.classList.add('d-none');
+    leadQueue.classList.remove('d-none');
+    leadQueue.innerHTML = queue.map((lead, index) => {
+      return `
+        <div class="lead-card">
+          <div class="lead-card-top">
+            <div class="lead-card-avatar">${esc(initials(lead.name))}</div>
+            <div style="min-width:0;">
+              <p class="lead-card-name">${esc(val(lead.name))}</p>
+              <div class="lead-card-meta">
+                <span><i class="fa-regular fa-envelope" style="opacity:.6"></i> ${esc(val(lead.email))}</span>
+                <span><i class="fa fa-phone" style="opacity:.6"></i> ${esc(val(lead.phone || lead.phone_number || lead.mobile_number))}</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <span class="badge-unassigned">
+              <i class="fa fa-circle" style="font-size:.45rem"></i> Unassigned
+            </span>
+          </div>
+
+          <div class="lead-mini-grid d-none">
+            <div class="lead-mini-item">
+              <label>Class</label>
+              <div>${esc(val(lead.klass || lead.class_name || lead.enrolled_class))}</div>
+            </div>
+            <div class="lead-mini-item">
+              <label>Exam Type</label>
+              <div>${esc(val(lead.exam_type))}</div>
+            </div>
+          </div>
+
+          <div class="lead-card-actions">
+            <button type="button" class="btn-view-profile js-view-profile" data-index="${index}">
+              <i class="fa fa-id-card"></i> View Profile
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    leadQueue.querySelectorAll('.js-view-profile').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const index = parseInt(btn.dataset.index, 10);
+        openLeadAt(index);
+      });
+    });
+  }
+
+  function setField(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const display = val(value);
+    el.textContent = display;
+    el.classList.toggle('empty', display === '—');
+  }
+
   function setLocked(isLocked) {
     focusCard.classList.toggle('locked', !!isLocked);
     btnAssignQuiz.classList.toggle('d-none', !!isLocked);
 
-    // Reset exam tab
     if (examAccordion) {
       examAccordion.innerHTML = '';
       examAccordion.classList.add('d-none');
@@ -713,15 +1027,13 @@ async function boot() {
       examsPlaceholder.innerHTML = `<i class="fa fa-file-circle-question mb-2" style="font-size:1.4rem;opacity:.4"></i><div>No exam results yet. Assign exams using the button above.</div>`;
     }
 
-    // Reset activity tab state for the new student
-    actPage       = 1;
-    actTotal      = 0;
+    actPage = 1;
+    actTotal = 0;
     actModsLoaded = false;
-    // Reset module dropdown back to "All Modules" only
     while (actModFilter.options.length > 1) actModFilter.remove(1);
-    actModFilter.value  = '';
+    actModFilter.value = '';
     actTypeFilter.value = '';
-    // Reset feed UI
+
     actFeed.classList.add('d-none');
     actPagination.classList.add('d-none');
     actPlaceholder.classList.remove('d-none');
@@ -730,7 +1042,126 @@ async function boot() {
     Object.keys(examResultCache).forEach(k => delete examResultCache[k]);
   }
 
-  /* ══ ACTIVITY — icon mapping ═════════════════════════════ */
+  function renderFocus(lead) {
+    focused = lead || null;
+
+    if (!focused) {
+      showQueueView();
+      return;
+    }
+
+    showDetailView();
+
+    document.getElementById('focusAvatar').textContent = initials(focused.name);
+    document.getElementById('focusName').textContent   = focused.name || '—';
+    document.getElementById('focusEmail').textContent  = focused.email || '—';
+    document.getElementById('focusPhone').textContent  = focused.phone || focused.phone_number || focused.mobile_number || '—';
+
+    setField('spName',        focused.name);
+    setField('spEmail',       focused.email);
+    setField('spMobile',      focused.phone || focused.phone_number || focused.mobile_number);
+    setField('spWhatsapp',    focused.whatsapp || focused.whatsapp_number);
+    setField('spAltEmail',    focused.alt_email || focused.alternative_email);
+    setField('spGuardian',    focused.guardian_name || focused.parent_name);
+    setField('spGuardianNum', focused.guardian_phone || focused.parent_phone);
+    setField('spClass',       focused.klass || focused.class_name || focused.enrolled_class);
+    setField('spBoard',       focused.education_board || focused.board);
+    setField('spExamType',    focused.exam_type);
+    setField('spPassout',     focused.passout_year || focused.passout);
+
+    const assigned = !!focused.assignedTo;
+    const badge    = document.getElementById('focusStatusBadge');
+    badge.className = assigned ? 'badge-assigned' : 'badge-unassigned';
+    badge.innerHTML = assigned
+      ? `<i class="fa fa-circle" style="font-size:.45rem"></i> Assigned`
+      : `<i class="fa fa-circle" style="font-size:.45rem"></i> Unassigned`;
+
+    btnAssignToMe.disabled = assigned || !CAN_ASSIGN;
+    btnAssignToMe.title = !CAN_ASSIGN
+      ? 'Only Academic Counsellors can self-assign'
+      : (assigned ? 'Already assigned' : '');
+
+    detailHint.textContent = assigned
+      ? 'Lead assigned to you. It has been removed from the unassigned queue.'
+      : 'Lead is still unassigned. Assign to unlock the profile.';
+
+    btnNextLead.disabled = queue.length === 0;
+
+    document.querySelectorAll('.sp-tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.sp-tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelector('.sp-tab-btn[data-tab="tabProfile"]').classList.add('active');
+    document.getElementById('tabProfile').classList.add('active');
+
+    setLocked(!assigned);
+  }
+
+  function openLeadAt(index) {
+    if (index < 0 || index >= queue.length) return;
+    currentIndex = index;
+    renderFocus(queue[index]);
+  }
+
+  function removeLeadFromQueue(lead) {
+    if (!lead) return;
+    const leadKey = String(lead.uuid || lead.id || '');
+    queue = queue.filter(item => String(item.uuid || item.id || '') !== leadKey);
+
+    if (!queue.length) {
+      currentIndex = -1;
+    } else if (currentIndex >= queue.length) {
+      currentIndex = queue.length - 1;
+    }
+
+    renderQueue();
+  }
+
+  function openNextLead() {
+    if (!queue.length) {
+      showQueueView();
+      return;
+    }
+
+    let nextIndex = currentIndex + 1;
+    if (nextIndex >= queue.length) nextIndex = 0;
+    openLeadAt(nextIndex);
+  }
+
+  async function loadQueue() {
+    queueState.classList.remove('d-none');
+    leadQueue.classList.add('d-none');
+
+    queueState.innerHTML = `
+      <div class="state-icon"><i class="fa fa-circle-notch fa-spin" style="color:var(--brand)"></i></div>
+      <p class="state-title">Loading queue</p>
+      <p class="mt-1" style="font-size:13px">Fetching all fresh unassigned leads…</p>
+    `;
+
+    try {
+      await loadAssignedMineCount();
+
+      const res = await fetch(FRESH_LEADS_URL + '?per_page=200', { headers: hdrs() });
+      const j   = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message || 'Failed to load fresh leads');
+
+      queue = Array.isArray(j.data) ? j.data.slice() : [];
+      currentIndex = -1;
+
+      renderQueue();
+      showQueueView();
+    } catch (e) {
+      queue = [];
+      updateStats();
+
+      queueState.classList.remove('d-none');
+      leadQueue.classList.add('d-none');
+      queueState.innerHTML = `
+        <div class="state-icon"><i class="fa fa-triangle-exclamation" style="color:#dc2626"></i></div>
+        <p class="state-title" style="color:#dc2626">Failed to Load</p>
+        <p class="mt-1" style="font-size:13px">${esc(e.message || 'Server error')}</p>
+      `;
+    }
+  }
+
   function actIcon(type) {
     const map = {
       store:   { icon: 'fa-plus',       cls: 'store'   },
@@ -743,7 +1174,6 @@ async function boot() {
     return map[t] || map.default;
   }
 
-  /* ══ ACTIVITY — render feed ══════════════════════════════ */
   function renderActivityFeed(rows) {
     if (!rows.length) {
       actFeed.classList.add('d-none');
@@ -764,7 +1194,7 @@ async function boot() {
         ? new Date(when).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
         : '—';
       const note   = row.log_note || row.description || row.message || '';
-      const target = row.target   || row.record_id   || '';
+      const target = row.target || row.record_id || '';
 
       return `
         <div class="activity-item">
@@ -776,7 +1206,7 @@ async function boot() {
               ${esc(row.activity || 'Action')}
               ${row.module ? `<span class="activity-module">${esc(row.module)}</span>` : ''}
             </div>
-            ${note   ? `<div class="activity-note">${esc(note)}</div>` : ''}
+            ${note ? `<div class="activity-note">${esc(note)}</div>` : ''}
             ${target ? `<div class="activity-note" style="color:var(--muted);font-size:11px;">Record: ${esc(String(target))}</div>` : ''}
             <div class="activity-meta">
               <span><i class="fa fa-clock"></i> ${timeStr}</span>
@@ -787,23 +1217,35 @@ async function boot() {
     }).join('');
 
     const totalPages = Math.ceil(actTotal / ACT_LIMIT) || 1;
-    actPagInfo.textContent  = `Page ${actPage} of ${totalPages}  (${actTotal} total)`;
-    actPrevBtn.disabled     = actPage <= 1;
-    actNextBtn.disabled     = actPage >= totalPages;
+    actPagInfo.textContent = `Page ${actPage} of ${totalPages} (${actTotal} total)`;
+    actPrevBtn.disabled = actPage <= 1;
+    actNextBtn.disabled = actPage >= totalPages;
   }
 
-  /* ══ ACTIVITY — load page ════════════════════════════════ */
+  async function populateModuleDropdown(studentId) {
+    try {
+      const res = await fetch(`/api/activity-logs?student_id=${studentId}&limit=500`, { headers: hdrs() });
+      const j = await res.json().catch(() => ({}));
+      if (!j.ok) return;
+
+      const modules = [...new Set((j.data || []).map(r => r.module).filter(Boolean))].sort();
+      modules.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        actModFilter.appendChild(opt);
+      });
+    } catch (e) {}
+  }
+
   async function loadActivityTab(resetPage = false) {
-    // Resolve the current student's numeric ID
     const studentId = focused?.id ?? '';
     if (!studentId) return;
-
     if (resetPage) actPage = 1;
 
-    const module   = actModFilter.value   || '';
-    const activity = actTypeFilter.value  || '';
+    const module   = actModFilter.value || '';
+    const activity = actTypeFilter.value || '';
 
-    // Show spinner
     actPlaceholder.classList.remove('d-none');
     actPlaceholder.innerHTML = `<i class="fa fa-circle-notch fa-spin" style="color:var(--brand);font-size:1.4rem;display:block;margin-bottom:6px;"></i> Loading activity…`;
     actFeed.classList.add('d-none');
@@ -817,12 +1259,11 @@ async function boot() {
       actTotal = j.total ?? 0;
       renderActivityFeed(Array.isArray(j.data) ? j.data : []);
 
-      // Populate module dropdown once per student load
       if (!actModsLoaded) {
         actModsLoaded = true;
         populateModuleDropdown(studentId);
       }
-    } catch(e) {
+    } catch (e) {
       actFeed.classList.add('d-none');
       actPagination.classList.add('d-none');
       actPlaceholder.classList.remove('d-none');
@@ -830,172 +1271,36 @@ async function boot() {
     }
   }
 
-  /* ══ ACTIVITY — populate module dropdown ═════════════════ */
-  async function populateModuleDropdown(studentId) {
-    try {
-      const res = await fetch(`/api/activity-logs?student_id=${studentId}&limit=500`, { headers: hdrs() });
-      const j   = await res.json().catch(() => ({}));
-      if (!j.ok) return;
-      const modules = [...new Set((j.data || []).map(r => r.module).filter(Boolean))].sort();
-      modules.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m; opt.textContent = m;
-        actModFilter.appendChild(opt);
-      });
-    } catch(e) { /* silent */ }
-  }
-
-  /* ══ ACTIVITY — pagination & filter events ═══════════════ */
-  actPrevBtn.addEventListener('click',  () => { actPage--; loadActivityTab(); });
-  actNextBtn.addEventListener('click',  () => { actPage++; loadActivityTab(); });
-  actModFilter.addEventListener('change',  () => loadActivityTab(true));
+  actPrevBtn.addEventListener('click', () => { actPage--; loadActivityTab(); });
+  actNextBtn.addEventListener('click', () => { actPage++; loadActivityTab(); });
+  actModFilter.addEventListener('change', () => loadActivityTab(true));
   actTypeFilter.addEventListener('change', () => loadActivityTab(true));
 
-  /* ══ SINGLE unified tab-click handler ═══════════════════ */
   document.querySelectorAll('.sp-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      // Switch active tab
       document.querySelectorAll('.sp-tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.sp-tab-pane').forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById(btn.dataset.tab).classList.add('active');
 
       const isLocked = focusCard.classList.contains('locked');
-
-      // Load exams tab content (only when unlocked)
-      if (btn.dataset.tab === 'tabExams' && focused && !isLocked) {
-        loadExamsTab();
-      }
-
-      // Load activity tab content (only when unlocked)
-      if (btn.dataset.tab === 'tabActivity' && focused && !isLocked) {
-        loadActivityTab(true);
-      }
+      if (btn.dataset.tab === 'tabActivity' && focused && !isLocked) loadActivityTab(true);
     });
   });
 
-  /* ══ RENDER FOCUS CARD ═══════════════════════════════════ */
-  function renderFocus(u) {
-    focused = u || null;
-    if (!focused) {
-      focusWrap.classList.add('d-none');
-      flState.classList.remove('d-none');
-      flState.innerHTML = `
-        <div class="state-icon"><i class="fa fa-users-slash" style="color:var(--muted)"></i></div>
-        <p class="state-title">No Student Loaded</p>
-        <p class="mt-1" style="font-size:13px">Refresh to load the next lead in queue.</p>`;
-      return;
-    }
-
-    focusWrap.classList.remove('d-none');
-    flState.classList.add('d-none');
-
-    document.getElementById('focusAvatar').textContent = initials(focused.name);
-    document.getElementById('focusName').textContent   = focused.name  || '—';
-    document.getElementById('focusEmail').textContent  = focused.email || '—';
-    document.getElementById('focusPhone').textContent  = focused.phone || '—';
-
-    function setField(id, value) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      const display = val(value);
-      el.textContent = display;
-      el.classList.toggle('empty', display === '—');
-    }
-
-    setField('spName',        focused.name);
-    setField('spEmail',       focused.email);
-    setField('spMobile',      focused.phone || focused.mobile_number);
-    setField('spWhatsapp',    focused.whatsapp || focused.whatsapp_number);
-    setField('spAltEmail',    focused.alt_email || focused.alternative_email);
-    setField('spGuardian',    focused.guardian_name || focused.parent_name);
-    setField('spGuardianNum', focused.guardian_phone || focused.parent_phone);
-    setField('spClass',       focused.klass || focused.class_name || focused.enrolled_class);
-    setField('spBoard',       focused.education_board || focused.board);
-    setField('spExamType',    focused.exam_type);
-    setField('spPassout',     focused.passout_year || focused.passout);
-
-    const badge    = document.getElementById('focusStatusBadge');
-    const assigned = !!focused.assignedTo;
-    badge.className = assigned ? 'badge-assigned' : 'badge-unassigned';
-    badge.innerHTML = assigned
-      ? `<i class="fa fa-circle" style="font-size:.45rem"></i> Assigned`
-      : `<i class="fa fa-circle" style="font-size:.45rem"></i> Unassigned`;
-
-    btnAssignToMe.disabled = assigned || !CAN_ASSIGN;
-    btnAssignToMe.title    = !CAN_ASSIGN
-      ? 'Only Academic Counsellors can self-assign'
-      : (assigned ? 'Already assigned' : '');
-
-    setLocked(!assigned);
-  }
-
-  /* ══ LOAD FRESH LEAD ═════════════════════════════════════ */
-  async function loadNextLead() {
-    flState.classList.remove('d-none');
-    flState.innerHTML = `
-      <div class="state-icon"><i class="fa fa-circle-notch fa-spin" style="color:var(--brand)"></i></div>
-      <p class="state-title">Loading Next Lead</p>
-      <p class="mt-1" style="font-size:13px">Fetching the next unassigned student…</p>`;
-    focusWrap.classList.add('d-none');
-
-    try {
-      const res = await fetch(FRESH_LEADS_URL + '?per_page=1', { headers: hdrs() });
-      const j   = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || 'Failed to load');
-
-      const data = Array.isArray(j.data) ? j.data : [];
-      const meta = j.meta || {};
-
-      updateStats({
-        total:      meta.total ?? data.length,
-        unassigned: meta.total ?? data.length,
-        assigned:   0,
-      });
-
-      if (!data.length) {
-        flState.innerHTML = `
-          <div class="state-icon"><i class="fa fa-check-circle" style="color:var(--success)"></i></div>
-          <p class="state-title">Queue Empty</p>
-          <p class="mt-1" style="font-size:13px">No unassigned students in the queue right now.</p>`;
-        return;
-      }
-
-      renderFocus(data[0]);
-
-    } catch(e) {
-      flState.innerHTML = `
-        <div class="state-icon"><i class="fa fa-triangle-exclamation" style="color:#dc2626"></i></div>
-        <p class="state-title" style="color:#dc2626">Failed to Load</p>
-        <p class="mt-1" style="font-size:13px">${esc(e.message || 'Server error')}</p>`;
-    }
-  }
-
-  /* ══ ENTRY POINT ═════════════════════════════════════════ */
-  MY_ID = await getMyId();
-
-  const ask = await Swal.fire({
-    icon: 'question',
-    title: 'Load next student?',
-    text: 'Load the next unassigned student from the queue?',
-    showCancelButton: true,
-    confirmButtonText: '<i class="fa fa-bolt me-1"></i> Yes, Load',
-    cancelButtonText:  'Not now',
-    reverseButtons: true,
-    allowOutsideClick: false,
-    allowEscapeKey: false,
+  btnBackToQueue.addEventListener('click', () => {
+    renderQueue();
+    showQueueView();
   });
 
-  if (ask.isConfirmed) {
-    await loadNextLead();
-  } else {
-    flState.innerHTML = `
-      <div class="state-icon"><i class="fa fa-hand" style="color:var(--muted)"></i></div>
-      <p class="state-title">Ready when you are</p>
-      <p class="mt-1" style="font-size:13px">Click <strong>Refresh</strong> to load the next student.</p>`;
-  }
+  btnNextLead.addEventListener('click', () => {
+    if (!queue.length) {
+      showQueueView();
+      return;
+    }
+    openNextLead();
+  });
 
-  /* ══ ASSIGN TO ME ════════════════════════════════════════ */
   btnAssignToMe.addEventListener('click', async () => {
     if (!focused || !CAN_ASSIGN || !MY_ID) return;
 
@@ -1011,31 +1316,58 @@ async function boot() {
     if (!resp.isConfirmed) return;
 
     try {
-      const res = await fetch(ASSIGN_URL(MY_ID, focused.uuid || focused.id), {
+      const activeLead = focused;
+      const res = await fetch(ASSIGN_URL(MY_ID, activeLead.uuid || activeLead.id), {
         method: 'POST',
         headers: hdrs({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({}),
       });
+
       const j = await res.json().catch(() => ({}));
+
+      if (res.status === 409) {
+        removeLeadFromQueue(activeLead);
+        await loadAssignedMineCount();
+        updateStats();
+
+        await Swal.fire({
+          icon: 'info',
+          title: 'Already assigned',
+          text: j.message || 'This lead was already assigned to another counsellor.',
+        });
+
+        if (queue.length) openLeadAt(Math.max(0, Math.min(currentIndex, queue.length - 1)));
+        else showQueueView();
+        return;
+      }
+
       if (!res.ok) throw new Error(j.message || 'Assignment failed');
 
-      focused.assignedTo = 'Me';
+      focused = { ...activeLead, assignedTo: 'Me' };
+      assignedMineCount += 1;
+
+      removeLeadFromQueue(activeLead);
       renderFocus(focused);
+      updateStats();
 
-      Swal.fire({ icon:'success', title:'Assigned!', text:'Student assigned successfully.', timer:1400, showConfirmButton:false });
+      Swal.fire({
+        icon: 'success',
+        title: 'Assigned!',
+        text: 'Student assigned successfully.',
+        timer: 1400,
+        showConfirmButton: false
+      });
 
-    } catch(e) {
-      Swal.fire({ icon:'error', title:'Failed', text: e.message || 'Could not assign.' });
+    } catch (e) {
+      Swal.fire({ icon: 'error', title: 'Failed', text: e.message || 'Could not assign.' });
     }
   });
 
-  /* ══ ASSIGN EXAMS BUTTON ═════════════════════════════════ */
   btnAssignQuiz.addEventListener('click', () => {
     if (!focused) return;
     openUserQuizzes(focused.id, focused.name);
   });
 
-  /* ══ QUIZ MODAL ══════════════════════════════════════════ */
   const uqSearch = document.getElementById('uq_search');
   const uqFilter = document.getElementById('uq_filter');
   const uqRows   = document.getElementById('uq_rows');
@@ -1056,7 +1388,7 @@ async function boot() {
       if (!res.ok) throw new Error(j.message || 'Failed to load quizzes');
       uqData = Array.isArray(j.data) ? j.data : [];
       renderQuizRows();
-    } catch(e) {
+    } catch (e) {
       uqRows.innerHTML = `<tr><td colspan="8" class="text-danger text-center p-3">${esc(e.message)}</td></tr>`;
     } finally {
       uqLoader.style.display = 'none';
@@ -1067,12 +1399,12 @@ async function boot() {
     uqRows.querySelectorAll('tr:not(#uq_loader)').forEach(tr => tr.remove());
 
     let list = uqData.slice();
-    const q  = uqSearch.value.trim().toLowerCase();
-    const f  = uqFilter.value;
+    const q = uqSearch.value.trim().toLowerCase();
+    const f = uqFilter.value;
 
-    if (q)              list = list.filter(x => (x.quiz_name||'').toLowerCase().includes(q));
-    if (f==='assigned')   list = list.filter(x => !!x.assigned);
-    if (f==='unassigned') list = list.filter(x => !x.assigned);
+    if (q) list = list.filter(x => (x.quiz_name || '').toLowerCase().includes(q));
+    if (f === 'assigned') list = list.filter(x => !!x.assigned);
+    if (f === 'unassigned') list = list.filter(x => !x.assigned);
 
     if (!list.length) {
       uqRows.innerHTML = `<tr><td colspan="8" class="text-center text-muted p-3">No quizzes found.</td></tr>`;
@@ -1089,25 +1421,22 @@ async function boot() {
 
       const statusBadge = status === 'active'
         ? `<span class="badge bg-success-subtle text-success border border-success-subtle text-uppercase" style="font-size:10px;">${esc(status)}</span>`
-        : `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle text-uppercase" style="font-size:10px;">${esc(status||'—')}</span>`;
+        : `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle text-uppercase" style="font-size:10px;">${esc(status || '—')}</span>`;
 
-      const publicBadge = (isPublic==='yes'||isPublic==='public')
+      const publicBadge = (isPublic === 'yes' || isPublic === 'public')
         ? `<span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size:10px;">Yes</span>`
         : `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle" style="font-size:10px;">No</span>`;
 
       const codeHtml = code
-        ? `<button type="button"
-              class="btn btn-light btn-sm js-copy-code d-inline-flex align-items-center gap-1"
-              style="border-radius:8px;font-size:11px;font-weight:700;"
-              data-code="${esc(code)}" title="Copy code">
-              ${esc(code)} <i class="fa-regular fa-copy"></i>
+        ? `<button type="button" class="btn btn-light btn-sm js-copy-code d-inline-flex align-items-center gap-1" style="border-radius:8px;font-size:11px;font-weight:700;" data-code="${esc(code)}" title="Copy code">
+             ${esc(code)} <i class="fa-regular fa-copy"></i>
            </button>`
         : '<span class="text-muted">—</span>';
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td style="font-weight:600;">${esc(qz.quiz_name || '')}</td>
-        <td>${qz.total_time      != null ? esc(String(qz.total_time))      : '—'}</td>
+        <td>${qz.total_time != null ? esc(String(qz.total_time)) : '—'}</td>
         <td>${qz.total_questions != null ? esc(String(qz.total_questions)) : '—'}</td>
         <td>${statusBadge}</td>
         <td>${publicBadge}</td>
@@ -1129,304 +1458,13 @@ async function boot() {
       frag.appendChild(tr);
     });
     uqRows.appendChild(frag);
-
-    uqRows.querySelectorAll('.uq-toggle').forEach(ch => {
-      ch.addEventListener('change', async () => {
-        await toggleQuiz(parseInt(ch.dataset.qid, 10), !!ch.checked, ch);
-      });
-    });
-
-    uqRows.querySelectorAll('.js-copy-code').forEach(btn => {
-      btn.addEventListener('click', () => {
-        navigator.clipboard.writeText(btn.dataset.code || '').then(() => {
-          btn.innerHTML = '<i class="fa fa-check"></i> Copied';
-          setTimeout(() => { btn.innerHTML = `${esc(btn.dataset.code)} <i class="fa-regular fa-copy"></i>`; }, 1500);
-        });
-      });
-    });
-
-    uqRows.querySelectorAll('.js-attempt').forEach(inp => {
-      inp.addEventListener('change', async () => {
-        const quizId   = parseInt(inp.dataset.qid, 10);
-        const attempts = Math.max(1, parseInt(inp.value, 10) || 1);
-        inp.value = attempts;
-        await updateAttempts(quizId, attempts, inp);
-      });
-    });
   }
 
-  async function toggleQuiz(quizId, assigned, checkboxEl) {
-    if (!uqUserId || !quizId) return;
-    try {
-      const url = assigned ? QUIZ_ASSIGN_URL(uqUserId) : QUIZ_UNASSIGN_URL(uqUserId);
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: hdrs({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ quiz_id: quizId }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || 'Operation failed');
+  uqSearch.addEventListener('input', renderQuizRows);
+  uqFilter.addEventListener('change', renderQuizRows);
 
-      const item = uqData.find(x => Number(x.quiz_id) === Number(quizId));
-      if (item) {
-        item.assigned        = assigned;
-        item.assignment_code = assigned ? (j.data?.assignment_code || item.assignment_code || '') : null;
-        item.status          = assigned ? 'active' : 'revoked';
-      }
-      renderQuizRows();
-    } catch(e) {
-      if (checkboxEl) checkboxEl.checked = !assigned;
-      Swal.fire({ icon:'error', title:'Failed', text: e.message || 'Could not update.', toast:true, position:'top-end', timer:2500, showConfirmButton:false });
-    }
-  }
-
-  async function updateAttempts(quizId, attempts, inputEl) {
-    if (!uqUserId || !quizId) return;
-    try {
-      const res = await fetch(`/api/quizzes/${quizId}`, {
-        method: 'PUT',
-        headers: hdrs({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ attempt_no: attempts }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || 'Failed to update attempts');
-
-      const item = uqData.find(x => Number(x.quiz_id) === Number(quizId));
-      if (item) item.attempt_no = attempts;
-
-      Swal.fire({ icon:'success', title:'Updated', text:`Attempts set to ${attempts}`, toast:true, position:'top-end', timer:1500, showConfirmButton:false });
-    } catch(e) {
-      Swal.fire({ icon:'error', title:'Failed', text: e.message, toast:true, position:'top-end', timer:2500, showConfirmButton:false });
-    }
-  }
-
-  uqSearch.addEventListener('input',  () => renderQuizRows());
-  uqFilter.addEventListener('change', () => renderQuizRows());
-
-  /* ══ EXAMS TAB — group-wise result accordion ══════════════ */
-  const GROUP_WISE_URL            = (examUuid, studentUuid) =>
-    `/api/exam/group-wise-result?exam_key=${examUuid}&student_key=${studentUuid}`;
-  const USER_ASSIGNED_QUIZZES_URL = (userId) => `/api/users/${userId}/quizzes`;
-
-  const examAccordion    = document.getElementById('examAccordion');
-  const examsPlaceholder = document.getElementById('examsPlaceholder');
-  const examResultCache  = {};
-
-  async function loadExamsTab() {
-    if (!focused) return;
-    const userId      = focused.id;
-    const studentUuid = focused.uuid;
-
-    examAccordion.innerHTML = '';
-    examAccordion.classList.add('d-none');
-    examsPlaceholder.classList.remove('d-none');
-    examsPlaceholder.innerHTML = `<i class="fa fa-circle-notch fa-spin mb-2" style="font-size:1.4rem;color:var(--brand)"></i><div>Loading exams…</div>`;
-
-    try {
-      const res     = await fetch(USER_ASSIGNED_QUIZZES_URL(userId), { headers: hdrs() });
-      const j       = await res.json().catch(() => ({}));
-      const quizzes = (Array.isArray(j.data) ? j.data : []).filter(q => !!q.assigned);
-
-      if (!quizzes.length) {
-        examsPlaceholder.innerHTML = `<i class="fa fa-file-circle-question mb-2" style="font-size:1.4rem;opacity:.4"></i><div>No assigned exams yet.</div>`;
-        return;
-      }
-
-      examsPlaceholder.classList.add('d-none');
-      examAccordion.classList.remove('d-none');
-      examAccordion.innerHTML = '';
-      quizzes.forEach(qz => examAccordion.appendChild(buildExamAccordionItem(qz, studentUuid)));
-
-    } catch(e) {
-      examsPlaceholder.innerHTML = `<i class="fa fa-triangle-exclamation mb-2" style="font-size:1.4rem;color:#dc2626"></i><div style="color:#dc2626">${esc(e.message || 'Failed to load')}</div>`;
-    }
-  }
-
-  function buildExamAccordionItem(qz, studentUuid) {
-    const wrap = document.createElement('div');
-    wrap.className = 'exam-accordion-item';
-    wrap.dataset.quizUuid = qz.quiz_uuid || qz.uuid || '';
-
-    wrap.innerHTML = `
-      <div class="exam-accordion-header">
-        <div class="exam-acc-icon"><i class="fa fa-file-alt"></i></div>
-        <div style="min-width:0;flex:1;">
-          <p class="exam-acc-name">${esc(qz.quiz_name || 'Exam')}</p>
-          <div class="exam-acc-meta">
-            <span><i class="fa fa-clock" style="opacity:.6"></i> ${qz.total_time != null ? qz.total_time + ' min' : '—'}</span>
-            <span><i class="fa fa-list-ol" style="opacity:.6"></i> ${qz.total_questions != null ? qz.total_questions + ' Qs' : '—'}</span>
-            ${qz.assignment_code ? `<span><i class="fa fa-tag" style="opacity:.6"></i> ${esc(qz.assignment_code)}</span>` : ''}
-          </div>
-        </div>
-        <div class="exam-acc-badges">
-          <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size:10px;text-transform:uppercase;">Assigned</span>
-        </div>
-        <div class="exam-acc-chevron"><i class="fa fa-chevron-down"></i></div>
-      </div>
-      <div class="exam-accordion-body">
-        <div class="exam-body-inner">
-          <div class="exam-placeholder">
-            <i class="fa fa-circle-notch fa-spin" style="color:var(--brand)"></i>
-            <span style="margin-left:8px;">Loading results…</span>
-          </div>
-        </div>
-      </div>`;
-
-    wrap.querySelector('.exam-accordion-header').addEventListener('click', () =>
-      toggleExamAccordion(wrap, qz, studentUuid)
-    );
-    return wrap;
-  }
-
-  async function toggleExamAccordion(wrap, qz, studentUuid) {
-    const isOpen = wrap.classList.contains('open');
-    document.querySelectorAll('.exam-accordion-item.open').forEach(el => {
-      if (el !== wrap) el.classList.remove('open');
-    });
-    if (isOpen) { wrap.classList.remove('open'); return; }
-    wrap.classList.add('open');
-
-    const inner    = wrap.querySelector('.exam-body-inner');
-    const quizUuid = qz.quiz_uuid || qz.uuid || '';
-    if (!quizUuid) {
-      inner.innerHTML = `<div class="exam-placeholder" style="color:#dc2626;">No quiz UUID available.</div>`;
-      return;
-    }
-    if (examResultCache[quizUuid]) { renderGroupWise(inner, examResultCache[quizUuid]); return; }
-
-    inner.innerHTML = `<div class="exam-placeholder"><i class="fa fa-circle-notch fa-spin" style="color:var(--brand)"></i> <span>Loading results…</span></div>`;
-
-    try {
-      const res = await fetch(GROUP_WISE_URL(quizUuid, studentUuid), { headers: hdrs() });
-      const j   = await res.json().catch(() => ({}));
-
-      if (!res.ok || !j.success) {
-        inner.innerHTML = res.status === 404
-          ? `<div class="exam-placeholder"><i class="fa fa-inbox" style="opacity:.4;font-size:1.3rem"></i><div class="mt-1">Student hasn't attempted this exam yet.</div></div>`
-          : `<div class="exam-placeholder" style="color:#dc2626;"><i class="fa fa-triangle-exclamation"></i> ${esc(j.message || 'Failed to load results')}</div>`;
-        return;
-      }
-
-      examResultCache[quizUuid] = j;
-      renderGroupWise(inner, j);
-    } catch(e) {
-      inner.innerHTML = `<div class="exam-placeholder" style="color:#dc2626;"><i class="fa fa-triangle-exclamation"></i> ${esc(e.message || 'Network error')}</div>`;
-    }
-  }
-
-  function renderGroupWise(container, data) {
-    const attempts = data.attempts || [];
-    if (!attempts.length) {
-      container.innerHTML = `<div class="exam-placeholder">No attempt data found.</div>`;
-      return;
-    }
-
-    let html = `<div class="attempt-tabs">`;
-    attempts.forEach((a, i) => {
-      html += `<button class="attempt-tab-btn ${i===0?'active':''}" data-idx="${i}">
-        Attempt ${a.result?.attempt_number ?? (i+1)}
-        ${pctChip(a.result?.percentage)}
-      </button>`;
-    });
-    html += `</div>`;
-
-    attempts.forEach((a, i) => {
-      html += `<div class="exam-attempt-pane" data-idx="${i}" style="${i!==0?'display:none':''}">`;
-      html += buildAttemptTable(a);
-      html += `</div>`;
-    });
-
-    container.innerHTML = html;
-
-    container.querySelectorAll('.attempt-tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx);
-        container.querySelectorAll('.attempt-tab-btn').forEach(b => b.classList.remove('active'));
-        container.querySelectorAll('.exam-attempt-pane').forEach(p => p.style.display='none');
-        btn.classList.add('active');
-        container.querySelector(`.exam-attempt-pane[data-idx="${idx}"]`).style.display = '';
-      });
-    });
-  }
-
-  function pctChip(pct) {
-    if (pct == null) return '';
-    const p   = parseFloat(pct);
-    const cls = p >= 70 ? 'pass' : p >= 40 ? 'avg' : 'fail';
-    return `<span class="score-chip ${cls}" style="font-size:10px;padding:2px 7px;">${p.toFixed(1)}%</span>`;
-  }
-
-  function barColor(pct) {
-    const p = parseFloat(pct || 0);
-    return p >= 70 ? 'var(--success)' : p >= 40 ? 'var(--warn)' : '#ef4444';
-  }
-
-  function buildAttemptTable(a) {
-    const groups  = a.groups  || [];
-    const overall = a.overall || {};
-    const result  = a.result  || {};
-    const attempt = a.attempt || {};
-
-    const finAt = attempt.finished_at
-      ? new Date(attempt.finished_at).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
-      : '—';
-
-    let html = `
-      <div class="d-flex align-items-center gap-3 flex-wrap mb-3">
-        <div style="font-size:13px;color:var(--muted);">
-          <i class="fa fa-calendar-check me-1" style="opacity:.6"></i> Submitted:
-          <strong style="color:var(--text)">${finAt}</strong>
-        </div>
-        <div style="font-size:13px;color:var(--muted);">
-          <i class="fa fa-hashtag me-1" style="opacity:.6"></i> Score:
-          <strong style="color:var(--text)">${result.marks_obtained ?? 0} / ${result.total_marks ?? 0}</strong>
-        </div>
-        ${pctChip(result.percentage) ? `<div>${pctChip(result.percentage)}</div>` : ''}
-      </div>
-      <div class="group-result-wrap">
-        <table class="group-result-table">
-          <thead>
-            <tr>
-              <th style="min-width:150px;">Group / Section</th>
-              <th>Total Qs</th><th>Attempted</th><th>Skipped</th>
-              <th>Correct</th><th>Incorrect</th><th>Marks</th>
-              <th style="min-width:130px;">Score %</th>
-            </tr>
-          </thead>
-          <tbody>`;
-
-    groups.forEach(g => {
-      const pct = parseFloat(g.percentage || 0);
-      html += `<tr>
-        <td style="font-weight:700;">${esc(g.group_title)}</td>
-        <td>${g.total_questions}</td><td>${g.attempted}</td><td>${g.left}</td>
-        <td style="color:var(--success);font-weight:700;">${g.correct}</td>
-        <td style="color:#ef4444;font-weight:700;">${g.incorrect}</td>
-        <td style="font-weight:700;">${g.marks_obtained} <span style="color:var(--muted);font-weight:400;">/ ${g.total_marks}</span></td>
-        <td><div class="pct-bar-wrap">
-          <div class="pct-bar-bg"><div class="pct-bar-fill" style="width:${pct}%;background:${barColor(pct)};"></div></div>
-          <span class="pct-val" style="color:${barColor(pct)}">${pct.toFixed(1)}%</span>
-        </div></td>
-      </tr>`;
-    });
-
-    const ovPct = parseFloat(overall.percentage || 0);
-    html += `<tr class="total-row">
-      <td>Total</td>
-      <td>${overall.total_questions ?? 0}</td><td>${overall.attempted ?? 0}</td><td>${overall.left ?? 0}</td>
-      <td style="color:var(--success);">${overall.correct ?? 0}</td>
-      <td style="color:#ef4444;">${overall.incorrect ?? 0}</td>
-      <td>${overall.marks_obtained ?? 0} <span style="color:var(--muted);font-weight:400;">/ ${overall.total_marks ?? 0}</span></td>
-      <td><div class="pct-bar-wrap">
-        <div class="pct-bar-bg"><div class="pct-bar-fill" style="width:${ovPct}%;background:${barColor(ovPct)};"></div></div>
-        <span class="pct-val" style="color:${barColor(ovPct)}">${ovPct.toFixed(1)}%</span>
-      </div></td>
-    </tr>`;
-
-    html += `</tbody></table></div>`;
-    return html;
-  }
-
-} // end boot()
+  MY_ID = await getMyId();
+  await loadQueue();
+}
 </script>
 @endpush

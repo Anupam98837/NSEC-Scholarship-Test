@@ -821,5 +821,307 @@ class DashboardController extends Controller
             ], 500);
         }
     }
+/* =========================================================
+ | Counsellor dashboard
+ | GET /api/dashboard/counsellor
+ * ========================================================= */
 
+public function counsellorDashboard(Request $request)
+{
+    if ($resp = $this->requireRole($request, ['academic_counsellor', 'admin', 'super_admin'])) {
+        return $resp;
+    }
+
+    $actor  = $this->actor($request);
+    $userId = (int) ($actor['id'] ?? 0);
+
+    if (!$userId) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Unable to resolve user from token',
+        ], 403);
+    }
+
+    try {
+        $period    = (string) $request->query('period', '30d');
+        $range     = $this->getDateRange($period);
+        $startDate = $range['start'];
+        $endDate   = $range['end'];
+        $period    = $range['period'];
+        $today     = Carbon::today();
+
+        /* ---------- Summary counts ---------- */
+
+        // Total students assigned to this counsellor
+        $totalStudents = DB::table('student_counsellor_assignments')
+            ->where('counsellor_id', $userId)
+            ->whereNull('deleted_at')
+            ->count();
+
+        // Students assigned within the period
+        $newStudentsInPeriod = DB::table('student_counsellor_assignments')
+            ->where('counsellor_id', $userId)
+            ->whereNull('deleted_at')
+            ->whereBetween('assigned_at', [$startDate, $endDate])
+            ->count();
+
+        // Active vs other statuses
+        $studentsByStatus = DB::table('student_counsellor_assignments as a')
+            ->join('users as s', 's.id', '=', 'a.student_id')
+            ->where('a.counsellor_id', $userId)
+            ->whereNull('a.deleted_at')
+            ->whereNull('s.deleted_at')
+            ->select('s.status', DB::raw('COUNT(*) as count'))
+            ->groupBy('s.status')
+            ->get()
+            ->mapWithKeys(fn($row) => [(string)$row->status => (int)$row->count])
+            ->toArray();
+
+        // Quiz attempts made by counsellor's students (all time)
+        $totalAttemptsMyStudents = DB::table('quizz_attempts as qa')
+            ->join('student_counsellor_assignments as sca', 'sca.student_id', '=', 'qa.user_id')
+            ->whereNull('qa.deleted_at')
+            ->whereNull('sca.deleted_at')
+            ->where('sca.counsellor_id', $userId)
+            ->count('qa.id');
+
+        $completedAttemptsMyStudents = DB::table('quizz_attempts as qa')
+            ->join('student_counsellor_assignments as sca', 'sca.student_id', '=', 'qa.user_id')
+            ->whereNull('qa.deleted_at')
+            ->whereNull('sca.deleted_at')
+            ->where('sca.counsellor_id', $userId)
+            ->whereIn('qa.status', ['submitted', 'auto_submitted'])
+            ->count('qa.id');
+
+        // Average score across all my students (within period)
+        $avgRow = DB::table('quizz_results as qr')
+            ->join('student_counsellor_assignments as sca', 'sca.student_id', '=', 'qr.user_id')
+            ->whereNull('sca.deleted_at')
+            ->where('sca.counsellor_id', $userId)
+            ->whereBetween('qr.created_at', [$startDate, $endDate])
+            ->select(DB::raw('AVG(qr.percentage) as avg_percentage'))
+            ->first();
+
+        $avgPercentage = $avgRow && $avgRow->avg_percentage !== null
+            ? round((float) $avgRow->avg_percentage, 2)
+            : 0.0;
+
+        $summaryCounts = [
+            'total_students_assigned'      => $totalStudents,
+            'new_students_in_period'       => $newStudentsInPeriod,
+            'students_by_status'           => $studentsByStatus,
+            'total_attempts_my_students'   => $totalAttemptsMyStudents,
+            'completed_attempts_my_students' => $completedAttemptsMyStudents,
+            'average_percentage_my_students' => $avgPercentage,
+        ];
+
+        /* ---------- Quick stats for today ---------- */
+
+        $todayNewStudents = DB::table('student_counsellor_assignments')
+            ->where('counsellor_id', $userId)
+            ->whereNull('deleted_at')
+            ->whereDate('assigned_at', $today)
+            ->count();
+
+        $todayAttemptsMyStudents = DB::table('quizz_attempts as qa')
+            ->join('student_counsellor_assignments as sca', 'sca.student_id', '=', 'qa.user_id')
+            ->whereNull('qa.deleted_at')
+            ->whereNull('sca.deleted_at')
+            ->where('sca.counsellor_id', $userId)
+            ->whereDate('qa.created_at', $today)
+            ->count('qa.id');
+
+        $todayCompletedMyStudents = DB::table('quizz_attempts as qa')
+            ->join('student_counsellor_assignments as sca', 'sca.student_id', '=', 'qa.user_id')
+            ->whereNull('qa.deleted_at')
+            ->whereNull('sca.deleted_at')
+            ->where('sca.counsellor_id', $userId)
+            ->whereIn('qa.status', ['submitted', 'auto_submitted'])
+            ->whereDate('qa.finished_at', $today)
+            ->count('qa.id');
+
+        $quickStats = [
+            'today_new_students'              => $todayNewStudents,
+            'today_attempts_my_students'      => $todayAttemptsMyStudents,
+            'today_completed_my_students'     => $todayCompletedMyStudents,
+        ];
+
+        /* ---------- New student assignments over time ---------- */
+
+        $assignmentsOverTime = DB::table('student_counsellor_assignments')
+            ->select(
+                DB::raw('DATE(assigned_at) as date'),
+                DB::raw('COUNT(*) as count')
+            )
+            ->where('counsellor_id', $userId)
+            ->whereNull('deleted_at')
+            ->whereBetween('assigned_at', [$startDate, $endDate])
+            ->groupBy(DB::raw('DATE(assigned_at)'))
+            ->orderBy('date')
+            ->get();
+
+        /* ---------- Attempts over time (my students) ---------- */
+
+        $attemptsOverTime = DB::table('quizz_attempts as qa')
+            ->join('student_counsellor_assignments as sca', 'sca.student_id', '=', 'qa.user_id')
+            ->select(
+                DB::raw('DATE(qa.created_at) as date'),
+                DB::raw('COUNT(*) as count')
+            )
+            ->whereNull('qa.deleted_at')
+            ->whereNull('sca.deleted_at')
+            ->where('sca.counsellor_id', $userId)
+            ->whereBetween('qa.created_at', [$startDate, $endDate])
+            ->groupBy(DB::raw('DATE(qa.created_at)'))
+            ->orderBy('date')
+            ->get();
+
+        /* ---------- Average score over time (my students) ---------- */
+
+        $scoresOverTime = DB::table('quizz_results as qr')
+            ->join('student_counsellor_assignments as sca', 'sca.student_id', '=', 'qr.user_id')
+            ->select(
+                DB::raw('DATE(qr.created_at) as date'),
+                DB::raw('AVG(qr.percentage) as avg_percentage')
+            )
+            ->whereNull('sca.deleted_at')
+            ->where('sca.counsellor_id', $userId)
+            ->whereBetween('qr.created_at', [$startDate, $endDate])
+            ->groupBy(DB::raw('DATE(qr.created_at)'))
+            ->orderBy('date')
+            ->get();
+
+        /* ---------- My students list with their performance ---------- */
+
+        $myStudents = DB::table('student_counsellor_assignments as a')
+            ->join('users as s', 's.id', '=', 'a.student_id')
+            ->leftJoin(DB::raw('(
+                SELECT user_id,
+                       COUNT(id) as total_attempts,
+                       SUM(CASE WHEN status IN ("submitted","auto_submitted") THEN 1 ELSE 0 END) as completed_attempts
+                FROM quizz_attempts
+                WHERE deleted_at IS NULL
+                GROUP BY user_id
+            ) as qa_stats'), 'qa_stats.user_id', '=', 's.id')
+            ->leftJoin(DB::raw('(
+                SELECT user_id,
+                       AVG(percentage) as avg_percentage,
+                       MAX(percentage) as best_percentage
+                FROM quizz_results
+                GROUP BY user_id
+            ) as qr_stats'), 'qr_stats.user_id', '=', 's.id')
+            ->where('a.counsellor_id', $userId)
+            ->whereNull('a.deleted_at')
+            ->whereNull('s.deleted_at')
+            ->select([
+                'a.uuid as assignment_uuid',
+                'a.assigned_at',
+                'a.assignment_status',
+                's.id as student_id',
+                's.uuid as student_uuid',
+                's.name as student_name',
+                's.email as student_email',
+                's.phone_number as student_phone',
+                's.status as student_status',
+                DB::raw('COALESCE(qa_stats.total_attempts, 0) as total_attempts'),
+                DB::raw('COALESCE(qa_stats.completed_attempts, 0) as completed_attempts'),
+                DB::raw('ROUND(COALESCE(qr_stats.avg_percentage, 0), 2) as avg_percentage'),
+                DB::raw('ROUND(COALESCE(qr_stats.best_percentage, 0), 2) as best_percentage'),
+            ])
+            ->orderBy('s.name')
+            ->get();
+
+        /* ---------- Top performing students (my students, in period) ---------- */
+
+        $topStudents = DB::table('quizz_results as qr')
+            ->join('student_counsellor_assignments as sca', 'sca.student_id', '=', 'qr.user_id')
+            ->join('users as u', 'u.id', '=', 'qr.user_id')
+            ->select(
+                'u.id',
+                'u.uuid',
+                'u.name',
+                'u.email',
+                DB::raw('COUNT(qr.id) as attempts'),
+                DB::raw('AVG(qr.percentage) as avg_percentage'),
+                DB::raw('MAX(qr.percentage) as best_percentage')
+            )
+            ->whereNull('sca.deleted_at')
+            ->whereNull('u.deleted_at')
+            ->where('sca.counsellor_id', $userId)
+            ->whereBetween('qr.created_at', [$startDate, $endDate])
+            ->groupBy('u.id', 'u.uuid', 'u.name', 'u.email')
+            ->orderByDesc('avg_percentage')
+            ->limit(5)
+            ->get();
+
+        /* ---------- Students with no attempts yet (need attention) ---------- */
+
+        $inactiveStudents = DB::table('student_counsellor_assignments as a')
+            ->join('users as s', 's.id', '=', 'a.student_id')
+            ->leftJoin('quizz_attempts as qa', function ($join) {
+                $join->on('qa.user_id', '=', 's.id')
+                     ->whereNull('qa.deleted_at');
+            })
+            ->where('a.counsellor_id', $userId)
+            ->whereNull('a.deleted_at')
+            ->whereNull('s.deleted_at')
+            ->whereNull('qa.id') // no attempts at all
+            ->select([
+                's.id as student_id',
+                's.uuid as student_uuid',
+                's.name as student_name',
+                's.email as student_email',
+                's.status as student_status',
+                'a.assigned_at',
+            ])
+            ->orderBy('a.assigned_at')
+            ->limit(10)
+            ->get();
+
+        /* ---------- Notifications ---------- */
+
+        $notificationsSummary = [
+            'total_active' => DB::table('notifications')
+                ->where('status', 'active')
+                ->count(),
+            'latest' => DB::table('notifications')
+                ->orderByDesc('created_at')
+                ->limit(5)
+                ->get(['id', 'title', 'message', 'priority', 'status', 'created_at']),
+        ];
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Counsellor dashboard data fetched successfully',
+            'data'    => [
+                'summary_counts'        => $summaryCounts,
+                'quick_stats'           => $quickStats,
+                'assignments_over_time' => $assignmentsOverTime,
+                'attempts_over_time'    => $attemptsOverTime,
+                'scores_over_time'      => $scoresOverTime,
+                'my_students'           => $myStudents,
+                'top_students'          => $topStudents,
+                'inactive_students'     => $inactiveStudents,
+                'notifications'         => $notificationsSummary,
+                'date_range' => [
+                    'start'  => $startDate->toDateString(),
+                    'end'    => $endDate->toDateString(),
+                    'period' => $period,
+                ],
+            ],
+        ]);
+
+    } catch (\Throwable $e) {
+        Log::error('[Dashboard Counsellor] Failed to build dashboard', [
+            'user_id' => $userId,
+            'error'   => $e->getMessage(),
+            'trace'   => $e->getTraceAsString(),
+        ]);
+
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Failed to fetch counsellor dashboard data',
+        ], 500);
+    }
+}
 }

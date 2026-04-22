@@ -162,7 +162,10 @@ html.theme-dark .dropdown-menu{background:#0f172a;border-color:var(--line-strong
           </button>
         </div>
 
-        <div class="col-12 col-xl-auto ms-xl-auto d-flex justify-content-xl-end">
+        <div class="col-12 col-xl-auto ms-xl-auto d-flex justify-content-xl-end gap-2">
+          <button id="btnImport" type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#importQuizModal">
+            <i class="fa fa-file-import me-1"></i>Import
+          </button>
           <a id="btnCreate" href="/quizz/create" class="btn btn-primary">
             <i class="fa fa-plus me-1"></i>New Quiz
           </a>
@@ -328,6 +331,39 @@ html.theme-dark .dropdown-menu{background:#0f172a;border-color:var(--line-strong
         <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
         <button id="btnApplyFilters" type="button" class="btn btn-primary">
           <i class="fa fa-check me-1"></i>Apply Filters
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{-- Import Quiz Modal --}}
+<div class="modal fade" id="importQuizModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fa fa-file-import me-2"></i>Import Quiz</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="importQuizFile" class="form-label">Quiz Export File</label>
+          <input id="importQuizFile" type="file" class="form-control" accept=".json,application/json">
+          <div class="form-text">
+            Upload a quiz export JSON file. If the quiz name already exists, a copy name will be created automatically.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button id="btnRunImportQuiz" type="button" class="btn btn-primary">
+          <span class="lbl">
+            <i class="fa fa-upload me-1"></i>Import Quiz
+          </span>
+          <span class="spin d-none">
+            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            Importing…
+          </span>
         </button>
       </div>
     </div>
@@ -619,6 +655,9 @@ document.addEventListener('click', (e) => {
               ? `<li><button class="dropdown-item" data-act="unarchive" data-key="${key}" data-name="${esc(r.quiz_name||'')}"><i class="fa fa-box-open"></i> Unarchive</button></li>`
               : `<li><button class="dropdown-item" data-act="archive" data-key="${key}" data-name="${esc(r.quiz_name||'')}"><i class="fa fa-box-archive"></i> Archive</button></li>`
             }
+            <li><button class="dropdown-item" data-act="export" data-key="${key}" data-name="${esc(r.quiz_name||'')}">
+              <i class="fa fa-file-export"></i> Export
+            </button></li>
             <li><button class="dropdown-item text-danger" data-act="delete" data-key="${key}" data-name="${esc(r.quiz_name||'')}">
               <i class="fa fa-trash"></i> Delete
             </button></li>
@@ -827,8 +866,13 @@ q?.addEventListener('input', ()=>{
 /* ✅ MODAL BACKDROP FIX */
 const filterModalEl = document.getElementById('filterModal');
 const filterModalInst = filterModalEl ? bootstrap.Modal.getOrCreateInstance(filterModalEl) : null;
+const importQuizModalEl = document.getElementById('importQuizModal');
+const importQuizModalInst = importQuizModalEl ? bootstrap.Modal.getOrCreateInstance(importQuizModalEl) : null;
+const importQuizFile = document.getElementById('importQuizFile');
+const btnRunImportQuiz = document.getElementById('btnRunImportQuiz');
 
 let pendingFilterReload = false;
+let pendingImportReload = false;
 
 btnApplyFilters?.addEventListener('click', (e)=>{
   e.preventDefault();
@@ -849,6 +893,28 @@ filterModalEl?.addEventListener('hidden.bs.modal', ()=>{
   }
 
   // ✅ FAILSAFE: if backdrop stuck for any reason, clean it
+  setTimeout(()=>{
+    if (!document.querySelector('.modal.show')) {
+      document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+      document.body.classList.remove('modal-open');
+      document.body.style.removeProperty('overflow');
+      document.body.style.removeProperty('padding-right');
+    }
+  }, 50);
+});
+
+importQuizModalEl?.addEventListener('hidden.bs.modal', ()=>{
+  if (importQuizFile) importQuizFile.value = '';
+  setBtnBusy(btnRunImportQuiz, false);
+
+  if (pendingImportReload) {
+    pendingImportReload = false;
+    state.active.page = 1;
+    load('active');
+    load('archived');
+    load('deleted');
+  }
+
   setTimeout(()=>{
     if (!document.querySelector('.modal.show')) {
       document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
@@ -882,6 +948,70 @@ filterModalEl?.addEventListener('hidden.bs.modal', ()=>{
   /* ========= Initial load ========= */
   load('active');
 
+  async function exportQuizPackage(key, name){
+    const res = await fetch(`/api/quizz/transfer/${encodeURIComponent(key)}/export`, {
+      headers:{'Authorization':'Bearer '+TOKEN,'Accept':'application/json'}
+    });
+    if (!res.ok) {
+      let message = 'Export failed';
+      try {
+        const json = await res.json();
+        message = json?.message || json?.error || message;
+      } catch (e) {}
+      throw new Error(message);
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safe = String(name || 'quiz').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'quiz';
+    a.href = url;
+    a.download = `${safe}-export.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 400);
+  }
+
+  async function importQuizPackage(){
+    const file = importQuizFile?.files?.[0];
+    if (!file) {
+      err('Please choose a quiz export file');
+      return;
+    }
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    setBtnBusy(btnRunImportQuiz, true);
+    try{
+      const res = await fetch('/api/quizz/transfer/import', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + TOKEN,
+          'Accept': 'application/json'
+        },
+        body: fd
+      });
+
+      const json = await res.json().catch(()=> ({}));
+      if (!res.ok) {
+        throw new Error(json?.message || json?.error || 'Import failed');
+      }
+
+      pendingImportReload = true;
+      importQuizModalInst?.hide();
+      ok(json?.message || 'Quiz imported');
+    }catch(ex){
+      console.error(ex);
+      err(ex.message || 'Import failed');
+    }finally{
+      setBtnBusy(btnRunImportQuiz, false);
+    }
+  }
+
+  btnRunImportQuiz?.addEventListener('click', importQuizPackage);
+
   /* ========= Row action handlers (all tabs) ========= */
   document.addEventListener('click', async (e)=>{
     const it = e.target.closest('.dropdown-item[data-act]');
@@ -904,6 +1034,16 @@ filterModalEl?.addEventListener('hidden.bs.modal', ()=>{
     }
     if (act === 'testrun') {
       location.href = `/test-exam/${encodeURIComponent(key)}`;
+      return;
+    }
+    if (act === 'export') {
+      try{
+        await exportQuizPackage(key, name);
+        ok('Quiz exported');
+      }catch(ex){
+        console.error(ex);
+        err(ex.message || 'Export failed');
+      }
       return;
     }
 

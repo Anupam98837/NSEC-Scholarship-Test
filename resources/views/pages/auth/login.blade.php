@@ -92,8 +92,8 @@
 
   /* This pair makes the whole stack (logo+title+form) sit centered,
      but when content is taller, it gracefully scrolls from top */
-  .ux-brand{ margin-top:auto; }
-  #ux_form{ margin-bottom:auto; }
+  .ux-brand{ margin-top:0; }
+  #ux_form{ margin-bottom:0; width:100%; }
 
   .ux-left::before,
   .ux-left::after{
@@ -122,14 +122,16 @@
   .ux-brand{
     display:grid;
     place-items:center;
-    margin-bottom:18px;
+    margin-bottom:10px;
     position:relative;
     z-index:1;
     max-width:100%;
+    flex-shrink:0;
   }
   .ux-brand img{
-    height:170px;
-    max-width:100%;
+    height:96px;
+    width:auto;
+    max-width:min(220px, 72vw);
     object-fit:contain;
   }
 
@@ -273,7 +275,7 @@
      Height tightening (without breaking centering)
      ========================= */
   @media (max-height: 820px){
-    .ux-brand img{ height:103px; }
+    .ux-brand img{ height:88px; }
     .ux-sub{ margin-bottom:12px; }
     .ux-card{ padding:20px; }
   }
@@ -283,7 +285,7 @@
     .ux-card{ padding:18px; }
   }
   @media (max-height: 680px){
-    .ux-brand img{ height:56px; }
+    .ux-brand img{ height:72px; }
     .ux-title{ font-size:1.45rem; }
     .ux-card{ padding:16px; }
     .ux-control{ height:44px; }
@@ -298,7 +300,7 @@
   /* Mobile fine-tuning */
   @media (max-width: 576px){
     .ux-left{ padding:16px; }
-    .ux-brand img{ height:80px; }
+    .ux-brand img{ height:68px; }
     .ux-card{ padding:18px; border-radius:16px; }
     .ux-control{ height:44px; }
     .ux-login{ height:46px; }

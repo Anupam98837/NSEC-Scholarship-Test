@@ -304,7 +304,7 @@
    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
   const SEND_OTP_API    = '/api/auth/forgot-password/send-otp';
   const RESET_API       = '/api/auth/forgot-password/reset';
-  const LOGIN_PAGE      = '/';
+  const LOGIN_PAGE      = '/login-passhallienz';
   // const RESEND_COOLDOWN = 60; // seconds
 
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';

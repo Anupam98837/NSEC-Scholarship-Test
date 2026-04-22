@@ -451,7 +451,7 @@
   $REGISTER_API   = url('/api/auth/student-register');
   $SEND_OTP_API   = url('/api/auth/send-phone-otp');
   $VERIFY_OTP_API = url('/api/auth/verify-phone-otp');
-  $LOGIN_URL      = url('/');
+  $LOGIN_URL      = url('/login-passhallienz');
   $REDIRECT_AFTER = url('/dashboard');
 @endphp
 

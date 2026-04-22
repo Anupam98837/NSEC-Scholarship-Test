@@ -1170,6 +1170,8 @@ public function update(Request $request, int $id)
     $v = Validator::make($request->all(), [
         'name'                     => 'sometimes|string|max:150',
         'email'                    => 'sometimes|email|max:255',
+        'password'                 => 'sometimes|nullable|string|min:8|same:password_confirmation',
+        'password_confirmation'    => 'sometimes|nullable|string|min:8',
         'phone_number'             => 'sometimes|nullable|string|max:32',
         'alternative_email'        => 'sometimes|nullable|email|max:255',
         'alternative_phone_number' => 'sometimes|nullable|string|max:32',
@@ -1221,6 +1223,10 @@ public function update(Request $request, int $id)
         if (array_key_exists($key, $data)) {
             $updates[$key] = $data[$key];
         }
+    }
+
+    if (!empty($data['password'] ?? null)) {
+        $updates['password'] = Hash::make($data['password']);
     }
 
     // ✅ Folder update (supports unassign: null)

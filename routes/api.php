@@ -9,6 +9,7 @@ use App\Http\Controllers\API\ExamController;
 use App\Http\Controllers\API\DashboardController;
 use App\Http\Controllers\API\MediaController;
 use App\Http\Controllers\API\QuizzResultController;
+use App\Http\Controllers\API\QuizzTransferController;
 use App\Http\Controllers\API\PagePrivilegeController;
 use App\Http\Controllers\API\DashboardMenuController;
 use App\Http\Controllers\API\UserPrivilegeController;
@@ -31,6 +32,8 @@ use App\Http\Controllers\API\ActivityLogsController;
 use App\Http\Controllers\API\RegisterController;
 use App\Http\Controllers\API\StudentDoubtSubmissionController;
 use App\Http\Controllers\API\EmailOtpController;
+use App\Http\Controllers\API\OtpLoginController;
+use App\Http\Controllers\API\AutoAssignQuizController;
 
 
 
@@ -42,6 +45,9 @@ Route::get('/user', function (Request $request) {
 // Auth Routes 
 
 Route::post('/auth/login',  [UserController::class, 'login']);
+Route::post('/auth/login-otp/send',   [OtpLoginController::class, 'sendOtp']);
+Route::post('/auth/login-otp/status', [OtpLoginController::class, 'status']);
+Route::post('/auth/login-otp/verify', [OtpLoginController::class, 'verifyAndLogin']);
 Route::post('/auth/student-register', [UserController::class, 'studentRegister']);
 Route::post('/auth/logout', [UserController::class, 'logout'])
     ->middleware('checkRole');
@@ -87,7 +93,7 @@ Route::middleware(['checkRole:admin,super_admin,student,examiner,academiccounsel
 
 // Quizz Routes 
 
-Route::middleware('checkRole:admin,super_admin,student,examiner')
+Route::middleware('checkRole:admin,super_admin,student,examiner,academiccounsellor')
     ->prefix('quizz')->name('quizz.')
     ->group(function () {
  
@@ -105,6 +111,9 @@ Route::middleware('checkRole:admin,super_admin,student,examiner')
         Route::delete('/{key}',    [QuestionController::class, 'destroy'])->name('destroy');
     });
  
+    Route::get('/transfer/{key}/export', [QuizzTransferController::class, 'export'])->name('transfer.export');
+    Route::post('/transfer/import', [QuizzTransferController::class, 'import'])->name('transfer.import');
+    
     // ===== Status & lifecycle =====
     Route::patch ('/{key}/status',  [QuizzController::class, 'updateStatus'])->name('status');
     Route::patch ('/{key}/restore', [QuizzController::class, 'restore'])->name('restore');
@@ -121,6 +130,13 @@ Route::middleware('checkRole:admin,super_admin,student,examiner')
     Route::match(['put','patch'],'/{key}', [QuizzController::class, 'update'])->name('update');
     
 });
+
+Route::middleware('checkRole:admin,super_admin')
+    ->prefix('quizz/auto-assign')
+    ->group(function () {
+        Route::get('/student-register', [AutoAssignQuizController::class, 'index']);
+        Route::put('/student-register', [AutoAssignQuizController::class, 'update']);
+    });
 
 Route::get('exam/results/{resultId}/export',     [ExamController::class, 'export']);
 Route::get('exam/results/{resultKey}',            [ExamController::class, 'resultDetail']);
@@ -174,7 +190,9 @@ Route::middleware(['checkRole:student,admin,super_admin'])->group(function () {
 Route::middleware(['checkRole:examiner,admin,super_admin'])->group(function () {
     Route::get('/dashboard/examiner', [DashboardController::class, 'examinerDashboard']);
 });
-
+Route::middleware(['checkRole:examiner,admin,super_admin,academic_counsellor'])->group(function () {
+Route::get('/dashboard/counsellor', [DashboardController::class, 'counsellorDashboard']);
+});
 // All Media Routes 
 Route::middleware(['checkRole:admin,super_admin,instructor,author'])->group(function () {
     Route::get('/media',  [MediaController::class, 'index']);
