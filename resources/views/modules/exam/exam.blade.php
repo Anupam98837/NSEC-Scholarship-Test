@@ -317,8 +317,24 @@ const QUIZ_KEY =
   (document.querySelector('meta[name="quiz-key"]')?.content || '').trim() ||
   new URLSearchParams(location.search).get('quiz') || '';
 
+const EXAM_CLIENT_STORAGE_KEY = 'exam_client_id';
 const STORAGE_ATTEMPT_KEY = 'attempt_uuid:' + QUIZ_KEY;
 const STORAGE_CACHE_KEY   = 'exam_cache:'   + QUIZ_KEY;
+
+function getOrCreateExamClientId(){
+  try{
+    const existing = localStorage.getItem(EXAM_CLIENT_STORAGE_KEY);
+    if (existing) return existing;
+
+    const next = (window.crypto?.randomUUID?.() || (`exam-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`));
+    localStorage.setItem(EXAM_CLIENT_STORAGE_KEY, next);
+    return next;
+  }catch(_){
+    return `exam-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
+const EXAM_CLIENT_ID = getOrCreateExamClientId();
 
 let ATTEMPT_UUID = localStorage.getItem(STORAGE_ATTEMPT_KEY) || null;
 
@@ -433,6 +449,10 @@ function isAttemptClosedError(e){
   );
 }
 
+function isExamLockedError(e){
+  return Number(e?.status || 0) === 423;
+}
+
 const mmss = s => {
   s = Math.max(0, Math.floor(s));
   const m = String(Math.floor(s/60)).padStart(2,'0');
@@ -454,6 +474,7 @@ async function api(path, opts = {}) {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
+        'X-Exam-Client-Id': EXAM_CLIENT_ID,
         ...(opts.headers || {})
       }
     });
@@ -854,6 +875,23 @@ async function handleRemoteAttemptClosure(){
   window.location.replace('/dashboard');
 }
 
+async function handleActiveExamLock(e){
+  const activeAttempt = e?.payload?.active_attempt || null;
+  const continueUrl   = activeAttempt?.continue_url || '/dashboard';
+  const text = e?.message || 'Another exam is already running for this user.';
+
+  clearAllExamClientState();
+  await Swal.fire({
+    icon:'info',
+    title:'Exam Locked',
+    text,
+    confirmButtonText: activeAttempt?.continue_url ? 'Go to Running Exam' : 'Go to Dashboard',
+    allowOutsideClick:false,
+    allowEscapeKey:false
+  });
+  window.location.replace(continueUrl);
+}
+
 async function refreshAttemptFromLive({ force = false, rebuildUi = false } = {}){
   if (!EXAM_STARTED || isSubmitting) return false;
 
@@ -884,6 +922,11 @@ async function refreshAttemptFromLive({ force = false, rebuildUi = false } = {})
 
     return true;
   }catch(e){
+    if (isExamLockedError(e)){
+      await handleActiveExamLock(e);
+      return false;
+    }
+
     if (isAttemptClosedError(e)){
       await handleRemoteAttemptClosure();
       return false;
@@ -977,6 +1020,10 @@ async function flushDraftSync({ force = false } = {}){
     if (res?.attempt?.server_end_at) serverEndAt = res.attempt.server_end_at;
     lastSyncedState = signature;
   }catch(e){
+    if (isExamLockedError(e)){
+      await handleActiveExamLock(e);
+      return;
+    }
     if (isAttemptClosedError(e)){
       await handleRemoteAttemptClosure();
       return;
@@ -1012,7 +1059,8 @@ function sendDraftSyncKeepalive(){
     headers:{
       'Accept':'application/json',
       'Content-Type':'application/json',
-      'Authorization': `Bearer ${token}`
+      'Authorization': `Bearer ${token}`,
+      'X-Exam-Client-Id': EXAM_CLIENT_ID
     },
     body: JSON.stringify(payload)
   }).catch(() => {});
@@ -1367,6 +1415,10 @@ async function doSubmit(auto){
         timeoutMs: 25000
       });
     }catch(bulkErr){
+      if (isExamLockedError(bulkErr)) {
+        await handleActiveExamLock(bulkErr);
+        return;
+      }
       if (isAttemptClosedError(bulkErr)) {
         await handleRemoteAttemptClosure();
         return;
@@ -1596,6 +1648,10 @@ async function bootExam(){
   }catch(e){
     console.error(e);
     showSkeleton(false);
+    if (isExamLockedError(e)){
+      await handleActiveExamLock(e);
+      return;
+    }
     Swal.fire({icon:'error', title:'Cannot start exam', text: e.message || 'Please try again.'});
   }
 }

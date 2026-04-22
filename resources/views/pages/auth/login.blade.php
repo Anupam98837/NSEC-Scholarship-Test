@@ -1,10 +1,15 @@
 {{-- resources/views/auth/login.blade.php (Unzip Examination) --}}
+@php
+  $brandName = config('app.name', 'TechnoHere');
+  $initiativeName = config('app.initiative_name', '');
+  $brandTitle = $initiativeName !== '' ? "{$brandName} - {$initiativeName}" : $brandName;
+@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Login — TechnoHere - Netaji Subhas Engineering College</title>
+  <title>Login — {{ $brandTitle }}</title>
 
   <meta name="csrf-token" content="{{ csrf_token() }}"/>
 
@@ -344,10 +349,11 @@
       <img src="{{ asset('/assets/media/images/web/logo.png') }}" alt="Unzip Examination">
     </div>
 
-    <h1 class="ux-title">TechnoHere</h1>
-    <p>
-  An Initiative of</p>
-   <h1 class="ux-title2">Netaji Subhas Engineering College</h1>
+    <h1 class="ux-title">{{ $brandName }}</h1>
+    @if($initiativeName !== '')
+      <p>An Initiative of</p>
+      <h1 class="ux-title2">{{ $initiativeName }}</h1>
+    @endif
 
    
 

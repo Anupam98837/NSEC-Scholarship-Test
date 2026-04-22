@@ -1,10 +1,15 @@
 {{-- resources/views/auth/student-register.blade.php (Unzip Examination) --}}
+@php
+  $brandName = config('app.name', 'TechnoHere');
+  $initiativeName = config('app.initiative_name', '');
+  $brandTitle = $initiativeName !== '' ? "{$brandName} - {$initiativeName}" : $brandName;
+@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Register — TechnoHere - Netaji Subhas Engineering College</title>
+  <title>Register — {{ $brandTitle }}</title>
 
   <meta name="csrf-token" content="{{ csrf_token() }}"/>
 
@@ -451,7 +456,7 @@
   $REGISTER_API   = url('/api/auth/student-register');
   $SEND_OTP_API   = url('/api/auth/send-phone-otp');
   $VERIFY_OTP_API = url('/api/auth/verify-phone-otp');
-  $LOGIN_URL      = url('/login-passhallienz');
+  $LOGIN_URL      = url('/');
   $REDIRECT_AFTER = url('/dashboard');
 @endphp
 
@@ -463,10 +468,11 @@
       <img src="{{ asset('/assets/media/images/web/logo.png') }}" alt="Unzip Examination">
     </div>
 
-   <h1 class="ux-title">TechnoHere</h1>
-    <p>
-  An Initiative of</p>
-   <h1 class="ux-title2">Netaji Subhas Engineering College</h1>
+   <h1 class="ux-title">{{ $brandName }}</h1>
+    @if($initiativeName !== '')
+      <p>An Initiative of</p>
+      <h1 class="ux-title2">{{ $initiativeName }}</h1>
+    @endif
 
 
     <form class="ux-card" id="ux_form" novalidate>

@@ -326,6 +326,128 @@ private function logActivity(
         }
     }
 
+    private function examClientId(Request $request): string
+    {
+        return trim((string) $request->header('X-Exam-Client-Id', ''));
+    }
+
+    private function examClientLockTtlSeconds(): int
+    {
+        return 35;
+    }
+
+    private function claimExamClientLock(object $attempt, Request $request, array $state = []): array
+    {
+        $clientId = $this->examClientId($request);
+        if ($clientId === '') {
+            return [
+                'locked' => false,
+                'session' => $this->writeAttemptSession($attempt, $state),
+            ];
+        }
+
+        $existing      = $this->readAttemptSession((string) $attempt->uuid);
+        $activeClient  = trim((string) ($existing['active_client_id'] ?? ''));
+        $activeSeenAt  = $this->parseComparableDate($existing['active_client_seen_at'] ?? null);
+        $now           = Carbon::now();
+        $ttl           = $this->examClientLockTtlSeconds();
+        $lockIsFresh   = $activeClient !== '' && $activeSeenAt && $activeSeenAt->diffInSeconds($now) <= $ttl;
+
+        if ($lockIsFresh && $activeClient !== $clientId) {
+            $retryAfter = max(1, $ttl - $activeSeenAt->diffInSeconds($now));
+
+            return [
+                'locked' => true,
+                'retry_after_sec' => $retryAfter,
+                'active_client_seen_at' => $activeSeenAt->toDateTimeString(),
+            ];
+        }
+
+        $state['active_client_id']      = $clientId;
+        $state['active_client_seen_at'] = $now->toDateTimeString();
+
+        return [
+            'locked' => false,
+            'session' => $this->writeAttemptSession($attempt, $state),
+        ];
+    }
+
+    private function examClientLockResponse(array $lock): \Illuminate\Http\JsonResponse
+    {
+        $retryAfter = max(1, (int) ($lock['retry_after_sec'] ?? $this->examClientLockTtlSeconds()));
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Exam is active on another device. Please wait until that device goes offline or submits the exam.',
+            'lock' => [
+                'retry_after_sec' => $retryAfter,
+                'active_client_seen_at' => $lock['active_client_seen_at'] ?? null,
+            ],
+        ], 423);
+    }
+
+    private function runningAttemptForUser(int $userId, ?int $excludeAttemptId = null): ?object
+    {
+        $attempts = DB::table('quizz_attempts as qa')
+            ->join('quizz as q', 'q.id', '=', 'qa.quiz_id')
+            ->where('qa.user_id', $userId)
+            ->where('qa.status', 'in_progress')
+            ->whereNull('q.deleted_at')
+            ->when($excludeAttemptId, fn ($query) => $query->where('qa.id', '!=', $excludeAttemptId))
+            ->orderByDesc('qa.last_activity_at')
+            ->orderByDesc('qa.updated_at')
+            ->orderByDesc('qa.id')
+            ->select([
+                'qa.*',
+                'q.uuid as live_quiz_uuid',
+                'q.quiz_name',
+            ])
+            ->get();
+
+        foreach ($attempts as $attempt) {
+            if ($this->deadlinePassed($attempt)) {
+                $this->autoFinalize($attempt, true);
+                continue;
+            }
+
+            return $attempt;
+        }
+
+        return null;
+    }
+
+    private function activeAttemptMeta(object $attempt): array
+    {
+        $quizUuid = trim((string) ($attempt->live_quiz_uuid ?? $attempt->quiz_uuid ?? ''));
+        $quizKey  = $quizUuid !== '' ? $quizUuid : (string) $attempt->quiz_id;
+
+        return [
+            'attempt_id'        => (int) ($attempt->id ?? 0),
+            'attempt_uuid'      => (string) ($attempt->uuid ?? ''),
+            'quiz_id'           => (int) ($attempt->quiz_id ?? 0),
+            'quiz_uuid'         => $quizUuid !== '' ? $quizUuid : null,
+            'quiz_name'         => (string) ($attempt->quiz_name ?? 'Exam'),
+            'server_deadline_at'=> !empty($attempt->server_deadline_at)
+                ? Carbon::parse($attempt->server_deadline_at)->toDateTimeString()
+                : null,
+            'time_left_sec'     => $this->timeLeftSec($attempt),
+            'continue_url'      => '/exam/' . rawurlencode($quizKey),
+        ];
+    }
+
+    private function activeExamAlreadyRunningResponse(object $attempt, string $message, ?array $lock = null): \Illuminate\Http\JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+            'active_attempt' => $this->activeAttemptMeta($attempt),
+            'lock' => $lock ? [
+                'retry_after_sec' => max(1, (int) ($lock['retry_after_sec'] ?? $this->examClientLockTtlSeconds())),
+                'active_client_seen_at' => $lock['active_client_seen_at'] ?? null,
+            ] : null,
+        ], 423);
+    }
+
     private function attemptSelectionSnapshot(int $attemptId): array
     {
         $rows = DB::table('quizz_attempt_answers')
@@ -479,6 +601,12 @@ private function logActivity(
             if (array_key_exists('saved_at', $source) && $source['saved_at']) {
                 $payload['saved_at'] = (string) $source['saved_at'];
             }
+            if (array_key_exists('active_client_id', $source) && $source['active_client_id']) {
+                $payload['active_client_id'] = (string) $source['active_client_id'];
+            }
+            if (array_key_exists('active_client_seen_at', $source) && $source['active_client_seen_at']) {
+                $payload['active_client_seen_at'] = (string) $source['active_client_seen_at'];
+            }
         };
 
         if (!empty($existing)) {
@@ -571,15 +699,6 @@ private function logActivity(
             ], 429);
         }
 
-        // running attempt (idempotent)
-        $running = DB::table('quizz_attempts as qa')
-            ->where('qa.quiz_id', $quiz->id)
-            ->where('qa.user_id', $user->id)
-            ->where('qa.status', 'in_progress')
-            ->orderByDesc('qa.id')
-            ->select('qa.*')
-            ->first();
-
         $now         = Carbon::now();
         $durationMin = (int) ($quiz->total_time ?? 0);
 
@@ -592,30 +711,42 @@ private function logActivity(
 
         $deadline = $now->copy()->addMinutes($durationMin);
 
-        if ($running) {
-            if (!empty($running->server_deadline_at) && $now->gte(Carbon::parse($running->server_deadline_at))) {
-                $this->autoFinalize($running);
-            } else {
-                $this->writeAttemptSession($running, [
-                    'saved_at' => $now->toDateTimeString(),
-                ]);
+        $running = $this->runningAttemptForUser((int) $user->id);
 
-                return response()->json([
-                    'success' => true,
-                    'attempt' => [
-                        'attempt_uuid'   => $running->uuid,
-                        'quiz_id'        => (int) $quiz->id,
-                        'quiz_uuid'      => (string) $quiz->uuid,
-                        'quiz_name'      => (string) ($quiz->quiz_name ?? 'Quiz'),
-                        'total_time_sec' => $durationMin * 60,
-                        'server_end_at'  => (string) $running->server_deadline_at,
-                        'time_left_sec'  => max(
-                            0,
-                            Carbon::parse($running->server_deadline_at)->diffInSeconds($now, false) * -1
-                        ),
-                    ],
-                ], 200);
+        if ($running) {
+            $lock = $this->claimExamClientLock($running, $request, [
+                'saved_at' => $now->toDateTimeString(),
+            ]);
+            if (!empty($lock['locked'])) {
+                return $this->activeExamAlreadyRunningResponse(
+                    $running,
+                    'Another device is already running an exam for this user. Please wait until it goes offline or submits the exam.',
+                    $lock
+                );
             }
+
+            if ((int) $running->quiz_id !== (int) $quiz->id) {
+                return $this->activeExamAlreadyRunningResponse(
+                    $running,
+                    'Another exam is already running for this user. Please finish that exam before starting a new one.'
+                );
+            }
+
+            return response()->json([
+                'success' => true,
+                'attempt' => [
+                    'attempt_uuid'   => $running->uuid,
+                    'quiz_id'        => (int) $quiz->id,
+                    'quiz_uuid'      => (string) $quiz->uuid,
+                    'quiz_name'      => (string) ($quiz->quiz_name ?? 'Quiz'),
+                    'total_time_sec' => $durationMin * 60,
+                    'server_end_at'  => (string) $running->server_deadline_at,
+                    'time_left_sec'  => max(
+                        0,
+                        Carbon::parse($running->server_deadline_at)->diffInSeconds($now, false) * -1
+                    ),
+                ],
+            ], 200);
         }
 
         // Build per-attempt layout (questions + options order)
@@ -690,10 +821,13 @@ private function logActivity(
 
         $attempt = DB::table('quizz_attempts')->where('id', $attemptId)->first();
         if ($attempt) {
-            $this->writeAttemptSession($attempt, [
+            $lock = $this->claimExamClientLock($attempt, $request, [
                 'current_index' => 0,
                 'saved_at'      => $now->toDateTimeString(),
             ]);
+            if (!empty($lock['locked'])) {
+                return $this->examClientLockResponse($lock);
+            }
         }
 
         return response()->json([
@@ -893,6 +1027,15 @@ private function logActivity(
 
         if ($this->deadlinePassed($attempt)) {
             $attempt = $this->autoFinalize($attempt, true);
+        }
+
+        if ($attempt->status !== 'in_progress') {
+            return response()->json(['success'=>false,'message'=>'Attempt is not running'], 409);
+        }
+
+        $lock = $this->claimExamClientLock($attempt, $request);
+        if (!empty($lock['locked'])) {
+            return $this->examClientLockResponse($lock);
         }
 
         $rows = DB::table('quizz_questions as q')
@@ -1120,6 +1263,11 @@ private function logActivity(
         }
         if ($attempt->status !== 'in_progress') {
             return response()->json(['success'=>false,'message'=>'Attempt is not running'], 409);
+        }
+
+        $lock = $this->claimExamClientLock($attempt, $request);
+        if (!empty($lock['locked'])) {
+            return $this->examClientLockResponse($lock);
         }
 
         $now = Carbon::now();
@@ -1514,6 +1662,11 @@ private function logActivity(
         $this->logActivity('quiz', 'default', 'Auto-submitted due to deadline expiry', $request, $user, $attempt);
         $summary = $this->resultSummaryForAttempt($attempt);
         return response()->json(['success'=>true] + $summary, 200);
+    }
+
+    $lock = $this->claimExamClientLock($attempt, $request);
+    if (!empty($lock['locked'])) {
+        return $this->examClientLockResponse($lock);
     }
 
     $now = Carbon::now();
