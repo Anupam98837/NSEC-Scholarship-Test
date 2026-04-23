@@ -17,6 +17,19 @@ class EmailOtpController extends Controller
     private const OTP_TTL      = 10;
     private const MAX_ATTEMPTS = 5;
 
+    private function emailOwnedByAnotherActiveUser(string $email, int $userId): bool
+    {
+        $query = DB::table('users')
+            ->where('email', $email)
+            ->where('id', '!=', $userId);
+
+        if (Schema::hasColumn('users', 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
+
+        return $query->exists();
+    }
+
     private function actor(Request $request): array
     {
         return [
@@ -153,6 +166,36 @@ class EmailOtpController extends Controller
     }
 
     /* =========================================================
+     | POST /api/student-results/check-email
+     |========================================================= */
+    public function checkEmail(Request $request)
+    {
+        $userId = $this->actor($request)['id'];
+        if ($userId <= 0) {
+            return response()->json(['success' => false, 'message' => 'Unauthenticated.'], 403);
+        }
+
+        $email = strtolower(trim((string) $request->input('email', '')));
+        if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return response()->json([
+                'success' => false,
+                'available' => false,
+                'message' => 'A valid email address is required.',
+            ], 422);
+        }
+
+        $available = !$this->emailOwnedByAnotherActiveUser($email, $userId);
+
+        return response()->json([
+            'success' => true,
+            'available' => $available,
+            'message' => $available
+                ? 'Email is available.'
+                : 'This email address is already used by another account.',
+        ]);
+    }
+
+    /* =========================================================
      | POST /api/student-results/send-email-otp
      |========================================================= */
     public function send(Request $request)
@@ -165,6 +208,13 @@ class EmailOtpController extends Controller
     $email = strtolower(trim((string) $request->input('email', '')));
     if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         return response()->json(['success' => false, 'message' => 'A valid email address is required.'], 422);
+    }
+
+    if ($this->emailOwnedByAnotherActiveUser($email, $userId)) {
+        return response()->json([
+            'success' => false,
+            'message' => 'This email address is already used by another account.',
+        ], 409);
     }
 
     // ── Invalidate previous unused OTPs ──
@@ -296,6 +346,13 @@ class EmailOtpController extends Controller
         $userUpdate = ['updated_at' => now()];
         if (Schema::hasColumn('users', 'email'))             $userUpdate['email']             = $email;
         if (Schema::hasColumn('users', 'email_verified_at')) $userUpdate['email_verified_at'] = now();
+
+        if ($this->emailOwnedByAnotherActiveUser($email, $userId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This email address is already used by another account.',
+            ], 409);
+        }
 
         DB::table('users')->where('id', $userId)->update($userUpdate);
 

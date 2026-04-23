@@ -703,6 +703,7 @@ Route::middleware('checkRole')->group(function () {
     });
     Route::get('/my-email-status', [StudentResultController::class, 'myEmailStatus']);
     Route::post('/student-results/send-email-otp',   [EmailOtpController::class, 'send']);
+    Route::post('/student-results/check-email', [EmailOtpController::class, 'checkEmail']);
     Route::post('/student-results/verify-email-otp', [EmailOtpController::class, 'verify']);
     Route::post('/student-results/send-result-email', [EmailOtpController::class, 'sendResultEmail']);
 });

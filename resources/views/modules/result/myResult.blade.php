@@ -330,6 +330,7 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
   /* ── API endpoints ── */
   const API_MY_RESULTS   = '/api/student-results/my';
   const API_EMAIL_STATUS = '/api/my-email-status';
+  const API_CHECK_EMAIL  = '/api/student-results/check-email';
   const API_SEND_OTP     = '/api/student-results/send-email-otp';
   const API_VERIFY_OTP   = '/api/student-results/verify-email-otp';
   const API_SEND_RESULT  = '/api/student-results/send-result-email';
@@ -508,11 +509,9 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
     <i class="fa fa-inbox" style="opacity:.6"></i>
     OTP sent to <strong id="srOtpEmailLabel"></strong> — check your inbox &amp; spam folder.
   </div>
-  <div class="gate-resend">
-    Didn't receive it?
-    <button id="srResendBtn" disabled>
-      Resend in <span id="srCountdown">—</span>s
-    </button>
+  <div class="gate-help">
+    <i class="fa fa-clock" style="opacity:.6"></i>
+    You can request a new OTP from the Send OTP button after the timer finishes.
   </div>
   <div class="gate-error" id="srOtpError"></div>
 </div>
@@ -564,8 +563,6 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
     const otpSpinIcon  = document.getElementById('srOtpSpinIcon');
     const otpKeyIcon   = document.getElementById('srOtpKeyIcon');
 
-    const resendBtn   = document.getElementById('srResendBtn');
-    const countdownEl = document.getElementById('srCountdown');
     const otpEmailLbl = document.getElementById('srOtpEmailLabel');
     const getResultBtn= document.getElementById('srGetResultBtn');
 
@@ -573,6 +570,7 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
     const emailErr    = document.getElementById('srEmailError');
     const otpErr      = document.getElementById('srOtpError');
     const resultErr   = document.getElementById('srResultError');
+    let lastEmailCheck = { email: '', available: null };
 
     /* helpers */
     function showError(el, msg){
@@ -580,6 +578,9 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
       el.style.display = msg ? '' : 'none';
     }
     function clearErrors(){ showError(emailErr,''); showError(otpErr,''); showError(resultErr,''); }
+    function normalizeEmail(value){
+      return String(value || '').trim().toLowerCase();
+    }
 
     function setLoading(btn, loading, idleHtml){
       btn.disabled = loading;
@@ -588,8 +589,13 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
         : idleHtml;
     }
 
+    const sendOtpIdleHtml   = `<i class="fa fa-paper-plane"></i> Send OTP`;
+    const sendOtpResendHtml = `<i class="fa fa-rotate-right"></i> Resend OTP`;
+    let otpCooldownActive   = false;
+
     /* close */
     function closeModal(){
+      stopCountdown();
       backdrop.style.animation='gFadeIn .15s ease reverse';
       setTimeout(()=> backdrop.remove(), 150);
       document.removeEventListener('keydown', onEsc);
@@ -609,20 +615,38 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
 
     /* countdown timer */
     let countTimer = null;
-    function startCountdown(seconds){
-      resendBtn.disabled = true;
-      let left = seconds;
-      countdownEl.textContent = left;
+    function stopCountdown(){
       clearInterval(countTimer);
+      countTimer = null;
+      otpCooldownActive = false;
+    }
+    function setSendOtpIdle(canResend = false){
+      if (otpCooldownActive) return;
+      sendOtpBtn.disabled = false;
+      sendOtpBtn.innerHTML = canResend ? sendOtpResendHtml : sendOtpIdleHtml;
+    }
+    function setSendOtpCountdown(seconds){
+      const left = Math.max(0, Math.ceil(Number(seconds) || 0));
+      sendOtpBtn.disabled = left > 0;
+      sendOtpBtn.innerHTML = left > 0
+        ? `<i class="fa fa-clock"></i> ${left}s`
+        : sendOtpResendHtml;
+    }
+    function startCountdown(seconds){
+      let left = Math.max(0, Math.ceil(Number(seconds) || 0));
+      otpCooldownActive = left > 0;
+      setSendOtpCountdown(left);
+      clearInterval(countTimer);
+      if (left <= 0) {
+        return;
+      }
       countTimer = setInterval(()=>{
         left--;
         if(left <= 0){
-          clearInterval(countTimer);
-          resendBtn.disabled = false;
-          resendBtn.innerHTML = 'Resend OTP';
+          stopCountdown();
+          setSendOtpCountdown(0);
         } else {
-          countdownEl.textContent = left;
-          resendBtn.innerHTML = `Resend in <span id="srCountdown">${left}</span>s`;
+          setSendOtpCountdown(left);
         }
       },1000);
     }
@@ -630,7 +654,8 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
     /* ── Send OTP ── */
     async function doSendOtp(){
       clearErrors();
-      const email = emailInput.value.trim();
+      if (otpCooldownActive) return;
+      const email = normalizeEmail(emailInput.value);
       if(!email || !/\S+@\S+\.\S+/.test(email)){
         showError(emailErr,'Please enter a valid email address.');
         emailInput.classList.add('input-error');
@@ -639,8 +664,14 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
       }
       emailInput.classList.remove('input-error');
 
+      const emailOk = await validateEmailAvailability(email);
+      if (!emailOk) {
+        emailInput.focus();
+        return;
+      }
+
       sendOtpBtn.dataset.loadingText = 'Sending…';
-      setLoading(sendOtpBtn, true, `<i class="fa fa-paper-plane"></i> Send OTP`);
+      setLoading(sendOtpBtn, true, sendOtpIdleHtml);
 
       try{
         const res  = await authFetch(API_SEND_OTP,{ method:'POST', body:JSON.stringify({ email }) });
@@ -660,22 +691,66 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
         otpInput.focus();
 
         // Default: 2 min cooldown for 1st send
-       startCountdown(120);
+        startCountdown(120);
       }catch(e){
         showError(emailErr, e.message || 'Network error. Please try again.');
       }finally{
-        setLoading(sendOtpBtn, false, `<i class="fa fa-paper-plane"></i> Send OTP`);
+        if (!otpCooldownActive) {
+          setSendOtpIdle(stepOtp.style.display !== 'none');
+        }
       }
     }
 
     sendOtpBtn.addEventListener('click', doSendOtp);
-
-    resendBtn.addEventListener('click', ()=>{
-      clearErrors();
-      showError(otpErr,'');
-      otpInput.value='';
-      doSendOtp();
+    emailInput.addEventListener('input', ()=>{
+      lastEmailCheck = { email: '', available: null };
+      emailInput.classList.remove('input-error');
+      showError(emailErr, '');
     });
+    emailInput.addEventListener('blur', async ()=>{
+      const email = normalizeEmail(emailInput.value);
+      if (!email || !/\S+@\S+\.\S+/.test(email)) return;
+      await validateEmailAvailability(email, false);
+    });
+
+    async function validateEmailAvailability(email, showAvailableMessage = false){
+      const normalizedEmail = normalizeEmail(email);
+      if (!normalizedEmail) return false;
+
+      if (lastEmailCheck.email === normalizedEmail && lastEmailCheck.available !== null) {
+        if (!lastEmailCheck.available) {
+          emailInput.classList.add('input-error');
+          showError(emailErr, 'This email address is already used by another account.');
+        } else if (showAvailableMessage) {
+          showError(emailErr, '');
+        }
+        return lastEmailCheck.available;
+      }
+
+      try{
+        const res = await authFetch(API_CHECK_EMAIL, {
+          method: 'POST',
+          body: JSON.stringify({ email: normalizedEmail })
+        });
+        const json = await res.json().catch(()=>({}));
+        const available = !!json?.available;
+
+        lastEmailCheck = { email: normalizedEmail, available };
+
+        if (!res.ok || !available) {
+          emailInput.classList.add('input-error');
+          showError(emailErr, json?.message || 'This email address is already used by another account.');
+          return false;
+        }
+
+        emailInput.classList.remove('input-error');
+        if (showAvailableMessage) showError(emailErr, '');
+        return true;
+      }catch(e){
+        showError(emailErr, 'Unable to validate this email right now. Please try again.');
+        return false;
+      }
+    }
 
     /* ── Verify OTP ── *//* ── Auto-verify when 6 digits entered ── */
     async function doVerifyOtp(){
@@ -688,7 +763,6 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
       otpInput.disabled          = true;
       otpSpinIcon.style.display  = '';
       otpKeyIcon.style.display   = 'none';
-      resendBtn.disabled         = true;
 
       try{
         const res  = await authFetch(API_VERIFY_OTP,{ method:'POST', body:JSON.stringify({ email, otp }) });
@@ -702,18 +776,15 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
           otpSpinIcon.style.display  = 'none';
           otpKeyIcon.style.display   = '';
           if(json?.expired){
-            clearInterval(countTimer);
-            resendBtn.disabled  = false;
-            resendBtn.innerHTML = 'Resend OTP';
-          } else {
-            resendBtn.disabled = false;
+            stopCountdown();
+            setSendOtpIdle(true);
           }
           return;
         }
 
         // ✅ Verified
         emailStatusCache = null;
-        clearInterval(countTimer);
+        stopCountdown();
         stepOtp.style.display      = 'none';
         stepEmail.style.display    = 'none';
         stepDone.style.display     = '';
@@ -728,7 +799,6 @@ html.theme-dark .gate-error{background:#3b0a0a;border-color:#7f1d1d;color:#fca5a
         otpInput.focus();
         otpSpinIcon.style.display  = 'none';
         otpKeyIcon.style.display   = '';
-        resendBtn.disabled         = false;
       }
     }
 
